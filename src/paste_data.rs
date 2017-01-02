@@ -13,7 +13,6 @@ pub struct PasteData {
 
 impl PasteData {
     pub fn stream_to_file<P: AsRef<Path>>(self, path: P) -> Result<(), io::Error> {
-        // self.content.stream_to_file(path)
         let f = File::create(path).expect("Unable to create file");
         let mut f = BufWriter::new(f);
         f.write_all(self.content.as_bytes())
