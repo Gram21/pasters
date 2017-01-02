@@ -5,13 +5,11 @@ extern crate rocket;
 extern crate rocket_contrib;
 extern crate rand;
 mod paste_id;
-mod lang;
 mod paste_data;
 
 use paste_id::PasteID;
-use lang::PasteLang;
 use paste_data::PasteData;
-use std::io::{Result, Error};
+use std::io::{Result, Error, Read};
 use std::path::{Path, PathBuf};
 use std::fs::{File, remove_file};
 use std::collections::HashMap;
@@ -90,6 +88,7 @@ fn index() -> Template {
 
 #[post("/", format="text/plain", data = "<paste>")]
 fn upload(paste: PasteData) -> Template {
+    // TODO remove the paste= at the start. Prbly fetch other than with Data
     let id = PasteID::new(24);
     let mut map = HashMap::new();
     match write_to_file(paste, id) {
@@ -113,10 +112,15 @@ fn write_to_file(paste: PasteData, id: PasteID) -> Result<status::Custom<String>
 }
 
 #[get("/<id>", format="text/plain")]
-fn retrieve(id: PasteID) -> Option<File> {
+fn retrieve(id: PasteID) -> Template {
     // TODO with template etc
     let filename = format!("upload/{id}", id = id);
-    File::open(&filename).ok()
+    let mut data = String::new();
+    let mut f = File::open(filename).expect("Unable to open file");
+    f.read_to_string(&mut data).expect("Unable to read string");
+    let mut map = HashMap::new();
+    map.insert("paste", data);
+    Template::render("paste", &map)
 }
 
 #[derive(FromForm)]
