@@ -88,7 +88,7 @@ fn index() -> Template {
 
 #[post("/", format="text/plain", data = "<paste>")]
 fn upload(paste: PasteData) -> Template {
-    // TODO remove the paste= at the start. Prbly fetch other than with Data
+    // TODO Generate Paste Key for deletion
     let id = PasteID::new(24);
     let mut map = HashMap::new();
     match write_to_file(paste, id) {
@@ -137,6 +137,7 @@ fn remove<'a>(del_form: Form<'a, PasteDel<'a>>) -> Template {
     let mut map = HashMap::new();
     if file.exists() {
         let key = paste_del.paste_key;
+        // TODO change to generated paste key
         if key == "password" {
             if remove_file(file).is_ok() {
                 map.insert("success",
