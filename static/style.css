@@ -1,0 +1,52 @@
+body {
+    background: #272822;
+    color: green;
+    font-family: 'Trebuchet MS', sans-serif;
+    font-size: 14px;
+}
+
+textarea {
+  width: 75%;
+  height: auto;
+  background-color: #272822;
+  color: white;
+  border: 2px solid #66D9EF;
+  resize: none;
+}
+
+input[type=submit] {
+  width: auto;
+  background-color: #272822;
+  color: white;
+  border: 2px solid #66D9EF;
+}
+
+div.error {
+    margin: 10px 0;
+    background: #FAE4E4;
+    border: 1px solid #DD6F6F;
+    -moz-border-radius: 2px;
+    -webkit-border-radius: 2px;
+    padding: 4px;
+    font-size: 13px;
+    color: #DD6F6F;
+    font-weight: bold;
+}
+
+div.success {
+    margin: 10px 0;
+    background: #E4FAE4;
+    border: 1px solid #6FDD6F;
+    -moz-border-radius: 2px;
+    -webkit-border-radius: 2px;
+    padding: 4px;
+    font-size: 13px;
+    color: #6FDD6F;
+    font-weight: bold;
+}
+
+.success : a:link,a:visited {
+  /*TODO: make this work!*/
+  color: #6FDD6F;
+  font-weight: bold;
+}
