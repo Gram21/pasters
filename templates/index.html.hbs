@@ -7,11 +7,12 @@
   </head>
   <body>
     <center>
+      <br>
       {{#if error}} <div class="error"> <strong>Error:</strong> {{error}} </div> {{/if}}
       {{#if success}} <div class="success"> <strong>Success:</strong> {{success}} </div> {{/if}}
       {{#if success_create}} <div class="success"> <strong>Success</strong> Paste created: <a href={{success_create}}>{{success_create}}</a></div> {{/if}}
       <form action="/" enctype="text/plain" method="post">
-        <textarea name="paste" cols="40" rows="5"></textarea><br>
+        <textarea name="paste" cols="40" rows="40"></textarea><br>
         <input type="submit" value="Create Paste">
       </form>
       <br>
