@@ -114,15 +114,8 @@ fn write_to_file(paste: PasteData, id: PasteID) -> Result<status::Custom<String>
 
 #[get("/<id>", format="text/plain")]
 fn retrieve(id: PasteID) -> Option<File> {
+    // TODO with template etc
     let filename = format!("upload/{id}", id = id);
-    File::open(&filename).ok()
-}
-
-// TODO delete this and add it to the original /<id>
-#[get("/<id>/<lang>", format="text/plain")]
-fn retrieve_highlighted(id: PasteID, lang: PasteLang) -> Option<File> {
-    let filename = format!("upload/{id}", id = id);
-    println!("{}", lang);
     File::open(&filename).ok()
 }
 
