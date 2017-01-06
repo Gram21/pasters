@@ -11,11 +11,13 @@
       {{else}}
         {{#if success}} <div class="success"> <strong>Success:</strong> {{success}} </div>
         {{else}}
+        <!-- TODO delete this after introducing an own html-template after successful creation of paste-->
           {{#if success_create}} <div class="success"> <strong>Success</strong> Paste created: <a href={{success_create}}>{{success_create}}</a></div>
           {{else}}<br>
           {{/if}}
         {{/if}}
       {{/if}}
+      <!-- TODO create a dropdown menu with preferred time the paste should be saved (1 hour, 1 day, 1 week, 1 month) -->
       <form action="/" enctype="text/plain" method="post">
         <textarea autofocus name="paste" cols="40" rows="40"></textarea><br>
         <input type="submit" value="Create Paste">

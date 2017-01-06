@@ -89,12 +89,14 @@ fn index() -> Template {
 #[post("/", format="text/plain", data = "<paste>")]
 fn upload(paste: PasteData) -> Template {
     // TODO Generate Paste Key for deletion
+    // TODO save all pastes somewhere with id and password and lifetime (use HashMap with own paste struct or db)
     let id = PasteID::new(24);
     let mut map = HashMap::new();
     match write_to_file(paste, id) {
         Ok(res) => map.insert("success_create", res.1.to_string()),
         Err(res) => map.insert("error", res.to_string()),
     };
+    // TODO render an other template after creating paste with info about paste (link, id, key, time of deletion)
     Template::render("index", &map)
 }
 
@@ -113,7 +115,7 @@ fn write_to_file(paste: PasteData, id: PasteID) -> Result<status::Custom<String>
 
 #[get("/<id>", format="text/plain")]
 fn retrieve(id: PasteID) -> Template {
-    // TODO with template etc
+    // TODO make sure the pase exists
     let filename = format!("upload/{id}", id = id);
     let mut data = String::new();
     let mut f = File::open(filename).expect("Unable to open file");
