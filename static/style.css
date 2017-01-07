@@ -1,6 +1,6 @@
 body {
-    background: #272822;
-    color: green;
+    background: #23241F;
+    color: white;
     font-family: 'Trebuchet MS', sans-serif;
     font-size: 14px;
 }
@@ -8,7 +8,7 @@ body {
 textarea {
   width: 75%;
   height: auto;
-  background-color: #272822;
+  background-color: #23241F;
   color: white;
   border: 2px solid #66D9EF;
   resize: none;
@@ -16,7 +16,7 @@ textarea {
 
 input[type=submit] {
   width: auto;
-  background-color: #272822;
+  background-color: #23241F;
   color: white;
   border: 2px solid #66D9EF;
 }
@@ -45,8 +45,7 @@ div.success {
     font-weight: bold;
 }
 
-.success : a:link,a:visited {
-  /*TODO: make this work!*/
-  color: #6FDD6F;
-  font-weight: bold;
+a {
+  color: #F92672;
 }
+
