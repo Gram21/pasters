@@ -9,11 +9,10 @@ cd ./pasters
 cargo run
 ```
 
-This builds the debug version of the service and starts it. 
+This builds the debug version of the service and starts it (recommended).
 The service is then accessible at [http://localhost:8000](http://localhost:8000)
 
-# TODO
-* Better Front-End
-* cleaner code
-* generating a proper key needed for removing a paste
-* maybe drop-down menu with different options for time a paste should be saved
+A release version can be build and run with ```cargo run --release``` that then listens on port 80.
+
+# [TODO](TODO.md)
+

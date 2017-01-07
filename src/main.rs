@@ -43,6 +43,7 @@ fn main() {
 }
 
 fn remove_old_files(max_time_alive: Duration) -> std::io::Result<bool> {
+    //TODO make this remove files according to preferred ttl
     let mut removed = false;
     if let Ok(dir) = Path::new("upload/").read_dir() {
         for dir_entry_wrapped in dir {
@@ -100,7 +101,6 @@ struct Paste {
 
 #[post("/", format="text/plain", data = "<paste>")]
 fn upload(paste: PasteData) -> Result<Template, Redirect> {
-    // TODO Generate Paste Key for deletion
     // TODO save all pastes somewhere with id and password and lifetime (use HashMap with own paste struct or db)
     let id = PasteID::new(24);
     let mut map = HashMap::new();
