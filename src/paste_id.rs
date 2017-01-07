@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use rand::{self, Rng};
 use rocket::request::FromParam;
 
-const BASE62: &'static [u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+pub const BASE62: &'static [u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 /// A _probably_ unique paste ID.
 pub struct PasteID<'a>(Cow<'a, str>);

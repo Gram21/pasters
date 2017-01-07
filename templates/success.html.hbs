@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>pasters</title>
+    <link rel="stylesheet" type="text/css" href="/static/style.css">
+  </head>
+  <body>
+  <center>
+  <br>
+    <table>
+      {{#if id}}
+      <tr>
+        <td><strong>ID:</strong></td>
+        <td>{{id}}</td>
+      </tr>
+      {{/if}}
+      {{#if key}}
+      <tr>
+        <td><strong>Deletion Key:</strong></td>
+        <td>{{key}}</td>
+      </tr>
+      {{/if}}
+      {{#if ttl}}
+      <tr>
+        <td><strong>Time until deletion:</strong></td>
+        <td>{{ttl}} seconds</td>
+      </tr>
+      {{/if}}
+      {{#if link}}
+      <tr>
+        <td><strong>Link: </strong></td>
+        <td><a href={{link}}>{{link}}</a></td>
+      </tr>
+      {{/if}}
+    </table>
+  </center>
+  </body>
+</html>

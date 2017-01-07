@@ -9,14 +9,15 @@ mod paste_data;
 
 use paste_id::PasteID;
 use paste_data::PasteData;
-use std::io::{Result, Error, Read};
+use std::io::{Error, Read};
 use std::path::{Path, PathBuf};
 use std::fs::{File, remove_file};
 use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
-use rocket::response::{status, NamedFile};
-use rocket::request::Form;
+use rand::{Rng};
+use rocket::response::{status, NamedFile, Redirect, Flash};
+use rocket::request::{Form, FlashMessage};
 use rocket::http::Status;
 use rocket_contrib::Template;
 
@@ -37,11 +38,11 @@ fn main() {
     rocket::ignite()
         .catch(errors![not_found, too_large])
         .mount("/",
-               routes![get_static, index, upload, update, retrieve, remove])
+               routes![get_static, index, upload, retrieve, remove])
         .launch()
 }
 
-fn remove_old_files(max_time_alive: Duration) -> Result<bool> {
+fn remove_old_files(max_time_alive: Duration) -> std::io::Result<bool> {
     let mut removed = false;
     if let Ok(dir) = Path::new("upload/").read_dir() {
         for dir_entry_wrapped in dir {
@@ -81,31 +82,60 @@ fn too_large() -> Template {
 }
 
 #[get("/")]
-fn index() -> Template {
-    let map: HashMap<&str, &str> = std::collections::HashMap::new();
+fn index(msg: Option<FlashMessage>) -> Template {
+    let mut map: HashMap<&str, &str> = std::collections::HashMap::new();
+    //TODO make this below better (more general)
+    if msg.is_some() {
+        map.insert("error", "Invalid paste id");
+    }
     Template::render("index", &map)
 }
 
+#[derive(Clone)]
+struct Paste {
+    id: String,
+    key: String,
+    ttl: u64,
+}
+
 #[post("/", format="text/plain", data = "<paste>")]
-fn upload(paste: PasteData) -> Template {
+fn upload(paste: PasteData) -> Result<Template, Redirect> {
     // TODO Generate Paste Key for deletion
     // TODO save all pastes somewhere with id and password and lifetime (use HashMap with own paste struct or db)
     let id = PasteID::new(24);
     let mut map = HashMap::new();
-    match write_to_file(paste, id) {
-        Ok(res) => map.insert("success_create", res.1.to_string()),
+    match write_to_file(paste, &id) {
+        Ok(res) => {
+            let paste_id = format!("{}", id);
+            let paste_key = generate_deletion_key();
+            let new_paste = Paste { id: paste_id, key: paste_key, ttl: 60 * 60 * 24 * 7};
+            // let new_paste_clone = new_paste.clone();
+            map.insert("id", new_paste.id);
+            map.insert("key", new_paste.key);
+            map.insert("ttl", new_paste.ttl.to_string());
+            map.insert("link", res.1.to_string());
+            return Ok(Template::render("success", &map));
+        },
         Err(res) => map.insert("error", res.to_string()),
     };
-    // TODO render an other template after creating paste with info about paste (link, id, key, time of deletion)
-    Template::render("index", &map)
+    Ok(Template::render("index", &map))
 }
 
-#[put("/<id>", format="text/plain", data = "<paste>")]
-fn update(id: PasteID, paste: PasteData) -> Result<status::Custom<String>> {
-    write_to_file(paste, id)
+// #[put("/<id>", format="text/plain", data = "<paste>")]
+// fn update(id: PasteID, paste: PasteData) -> std::io::Result<status::Custom<String>> {
+//     write_to_file(paste, id)
+// }
+
+fn generate_deletion_key() -> String {
+    let mut key = String::with_capacity(16);
+    let mut rng = rand::thread_rng();
+    for _ in 0..16 {
+        key.push(paste_id::BASE62[rng.gen::<usize>() % 62] as char);
+    }
+    return key;
 }
 
-fn write_to_file(paste: PasteData, id: PasteID) -> Result<status::Custom<String>> {
+fn write_to_file(paste: PasteData, id: &PasteID) -> std::io::Result<status::Custom<String>> {
     let filename = format!("upload/{id}", id = id);
     let output = format!("{host}/{id}", host = "http://localhost:8000", id = id);
 
@@ -114,15 +144,16 @@ fn write_to_file(paste: PasteData, id: PasteID) -> Result<status::Custom<String>
 }
 
 #[get("/<id>", format="text/plain")]
-fn retrieve(id: PasteID) -> Template {
-    // TODO make sure the pase exists
+fn retrieve(id: PasteID) -> Result<Template, Flash<Redirect>> {
     let filename = format!("upload/{id}", id = id);
     let mut data = String::new();
-    let mut f = File::open(filename).expect("Unable to open file");
-    f.read_to_string(&mut data).expect("Unable to read string");
-    let mut map = HashMap::new();
-    map.insert("paste", data);
-    Template::render("paste", &map)
+    if let Ok(mut f) = File::open(filename) {
+        f.read_to_string(&mut data).expect("Unable to read string");
+        let mut map = HashMap::new();
+        map.insert("paste", data);
+        return Ok(Template::render("paste", &map));
+    };
+    Err(Flash::error(Redirect::to("/"), "Cannot open paste!"))
 }
 
 #[derive(FromForm)]
