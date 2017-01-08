@@ -21,6 +21,9 @@ use rocket::request::{Form, FlashMessage};
 use rocket::http::Status;
 use rocket_contrib::Template;
 
+static ERR_FILE_404: &'static str = "ERR_FILE_404";
+static MSG_FILE_404: &'static str = "Could not find file";
+
 fn main() {
     thread::spawn(|| {
         loop {
@@ -85,9 +88,11 @@ fn too_large() -> Template {
 #[get("/")]
 fn index(msg: Option<FlashMessage>) -> Template {
     let mut map: HashMap<&str, &str> = std::collections::HashMap::new();
-    //TODO make this below better (more general)
-    if msg.is_some() {
-        map.insert("error", "Invalid paste id");
+    if let Some(msg_u) = msg {
+        let code = msg_u.msg();
+        if code == ERR_FILE_404 {
+            map.insert("error", MSG_FILE_404);
+        }
     }
     Template::render("index", &map)
 }
@@ -153,7 +158,7 @@ fn retrieve(id: PasteID) -> Result<Template, Flash<Redirect>> {
         map.insert("paste", data);
         return Ok(Template::render("paste", &map));
     };
-    Err(Flash::error(Redirect::to("/"), "Cannot open paste!"))
+    Err(Flash::error(Redirect::to("/"), ERR_FILE_404))
 }
 
 #[derive(FromForm)]
