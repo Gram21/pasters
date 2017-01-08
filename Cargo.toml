@@ -4,11 +4,15 @@ version = "0.1.0"
 authors = ["Gramy <jan.keim@protonmail.com>"]
 
 [dependencies]
-rocket = "0.1.2"
-rocket_codegen = "0.1.2"
-rand = "0.3"
+rocket = "0.1.4"
+rocket_codegen = "0.1.4"
+rand = "0.3.*"
+
+[dev-dependencies]
+stainless = "*"
+rocket = { version = "0.1.4", features = ["testing"] }
 
 [dependencies.rocket_contrib]
-version = "*"
+version = "0.1.4"
 default-features = false
 features = ["handlebars_templates"]
