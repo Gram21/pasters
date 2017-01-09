@@ -7,6 +7,7 @@ authors = ["Gramy <jan.keim@protonmail.com>"]
 rocket = "0.1.4"
 rocket_codegen = "0.1.4"
 rand = "0.3.*"
+lazy_static = "*"
 
 [dev-dependencies]
 stainless = "*"

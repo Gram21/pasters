@@ -30,10 +30,16 @@
       {{#if link}}
       <tr>
         <td><strong>Link: </strong></td>
-        <td><a href={{link}}>{{link}}</a></td>
+        <td><div id="link"></div></td>
       </tr>
       {{/if}}
     </table>
+    <script>
+    {{#if link}}
+      var host = location.protocol+'//'+location.hostname+(location.port ? ':'+location.port: '');
+      document.getElementById('link').innerHTML = '<a href={{link}}>'+ host + '{{link}}</a>';
+    {{/if}}
+    </script>
   </center>
   </body>
 </html>

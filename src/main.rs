@@ -5,6 +5,7 @@
 extern crate rocket;
 extern crate rocket_contrib;
 extern crate rand;
+#[macro_use] extern crate lazy_static;
 pub mod paste_id;
 pub mod paste_data;
 
@@ -13,19 +14,18 @@ use std::time::Duration;
 use std::path::Path;
 use std::fs::remove_file;
 use std::io::Error;
+use std::collections::HashSet;
+use std::ops::DerefMut;
 
 fn main() {
+    //IDEA make a signal handler for catching interrupts and then save the current paste-set. At restart recover this set (if existing)
     thread::spawn(|| {
         loop {
             let interval = 60;
-            let max_time_alive = Duration::new(60 * 60 * 24 * 7, 0);
-            match remove_old_files(max_time_alive) {
-                Ok(_) => thread::sleep(Duration::from_secs(interval)),
-                Err(err) => {
+            if let Err(err) = remove_old_files(routes::PASTESET.lock().unwrap().deref_mut()) {
                     println!("Error: {}", err);
-                    thread::sleep(Duration::from_secs(interval))
-                }
             }
+            thread::sleep(Duration::from_secs(interval))
         }
     });
     rocket::ignite()
@@ -34,30 +34,31 @@ fn main() {
         .launch()
 }
 
-fn remove_old_files(max_time_alive: Duration) -> std::io::Result<bool> {
-    //TODO make this remove files according to preferred ttl
+fn remove_old_files(pastes: &mut HashSet<routes::Paste>) -> std::io::Result<bool> {
     let mut removed = false;
-    if let Ok(dir) = Path::new("upload/").read_dir() {
-        for dir_entry_wrapped in dir {
-            let dir_entry = try!(dir_entry_wrapped);
-            let metadata = dir_entry.metadata().unwrap();
-            if let Ok(time) = metadata.modified() {
-                let time_alive = time.elapsed().unwrap();
-                if time_alive > max_time_alive {
-                    if remove_file(dir_entry.path()).is_ok() {
-                        removed = true;
-                        println!("Removed paste with id {}",
-                                 dir_entry.file_name().to_str().unwrap());
-                    }
+    let mut removed_pastes: HashSet<routes::Paste> = HashSet::new();
+    for paste in pastes.iter() {
+        let file_string = "upload/".to_string() + &paste.get_id_cloned();
+        let path = Path::new(&file_string);
+        let metadata = try!(path.metadata());
+        if let Ok(time) = metadata.modified() {
+            let time_alive = time.elapsed().unwrap();
+            if time_alive > Duration::from_secs(paste.ttl) {
+                if remove_file(path).is_ok() {
+                    removed = true;
+                    removed_pastes.insert(paste.clone()); // save removed pastes for later
+                    println!("Removed paste with id {}",
+                             path.file_name().unwrap().to_str().unwrap());
                 }
-            } else {
-                return Err(Error::last_os_error());
             }
+        } else {
+            return Err(Error::last_os_error());
         }
-        Ok(removed)
-    } else {
-        Err(Error::last_os_error())
     }
+    for rem_pastes in removed_pastes.iter() {
+        pastes.remove(rem_pastes); //remove now non-existent pastes from HashSet
+    }
+    Ok(removed)
 }
 
 mod routes {
@@ -68,7 +69,8 @@ mod routes {
     use std::io::Read;
     use std::path::{Path, PathBuf};
     use std::fs::{File, remove_file};
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
+    use std::sync::Mutex;
     use rand::{self, Rng};
     use rocket::response::{status, NamedFile, Redirect, Flash};
     use rocket::request::{Form, FlashMessage};
@@ -77,6 +79,31 @@ mod routes {
 
     static ERR_FILE_404: &'static str = "ERR_FILE_404";
     static MSG_FILE_404: &'static str = "Could not find file";
+
+    lazy_static! {
+        pub static ref PASTESET: Mutex<HashSet<Paste>> = Mutex::new(HashSet::new());
+    }
+
+    #[derive(Clone, Hash, Eq, PartialEq, Debug)]
+    pub struct Paste {
+        id: String,
+        key: String,
+        pub ttl: u64,
+    }
+
+    impl Paste {
+        pub fn new(id: String, key: String, ttl: u64) -> Paste {
+            Paste { id: id, key: key, ttl: ttl}
+        }
+
+        pub fn get_id_cloned(&self) -> String {
+            self.id.clone()
+        }
+
+        pub fn get_key_cloned(&self) -> String {
+            self.key.clone()
+        }
+    }
 
     #[error(404)]
     pub fn not_found(req: &rocket::Request) -> Template {
@@ -104,28 +131,21 @@ mod routes {
         Template::render("index", &map)
     }
 
-    #[derive(Clone)]
-    pub struct Paste {
-        id: String,
-        key: String,
-        ttl: u64,
-    }
-
     #[post("/", format="text/plain", data = "<paste>")]
     pub fn upload(paste: PasteData) -> Result<Template, Redirect> {
-        // TODO save all pastes somewhere with id and password and lifetime (use HashMap with own paste struct or db)
+        // TODO add ttl option to Form and use it here
         let id = PasteID::new(24);
         let mut map = HashMap::new();
         match write_to_file(paste, &id) {
             Ok(res) => {
                 let paste_id = format!("{}", id);
                 let paste_key = generate_deletion_key();
-                let new_paste = Paste { id: paste_id, key: paste_key, ttl: 60 * 60 * 24 * 7};
-                // let new_paste_clone = new_paste.clone();
-                map.insert("id", new_paste.id);
-                map.insert("key", new_paste.key);
+                let new_paste = Paste::new(paste_id, paste_key, 60 * 60 * 24 * 7); //TODO
+                map.insert("id", new_paste.get_id_cloned());
+                map.insert("key", new_paste.get_key_cloned());
                 map.insert("ttl", new_paste.ttl.to_string());
                 map.insert("link", res.1.to_string());
+                PASTESET.lock().unwrap().insert(new_paste);
                 return Ok(Template::render("success", &map));
             },
             Err(res) => map.insert("error", res.to_string()),
@@ -149,7 +169,7 @@ mod routes {
 
     fn write_to_file(paste: PasteData, id: &PasteID) -> std::io::Result<status::Custom<String>> {
         let filename = format!("upload/{id}", id = id);
-        let output = format!("{host}/{id}", host = "http://localhost:8000", id = id);
+        let output = format!("/{id}", id = id);
 
         paste.stream_to_file(Path::new(&filename))?;
         Ok(status::Custom(Status::Created, output))
@@ -222,7 +242,7 @@ mod tests {
             before_each {
                 let mut req = MockRequest::new(Method::Get, "/");
                 let mut res = req.dispatch_with(&rocket);
-                let body_str = res.body().and_then(|b| b.into_string()).unwrap();
+                let body_str = res.body().and_then(|b| b.into_string()).expect("Result has no body!");
             }
 
             it "responds with status OK 200" {
