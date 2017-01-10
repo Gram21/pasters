@@ -17,6 +17,7 @@ use r2d2::{Pool, Config};
 use r2d2_diesel::ConnectionManager;
 use dotenv::dotenv;
 use std::env;
+use std::borrow::Borrow;
 
 pub fn create_db_pool() -> Pool<ConnectionManager<PgConnection>> {
     dotenv().ok();
@@ -32,3 +33,9 @@ pub fn establish_connection() -> PgConnection {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     PgConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url))
 }
+
+// pub fn get_connection<'a>(pool: Pool<ConnectionManager<PgConnection>>) -> &'a PgConnection {
+//     // TODO lifetime of borrowed value does not fit!
+//     let conn: &'a PgConnection = pool.get().expect("Problem accessing db!").borrow();
+//     conn
+// }
