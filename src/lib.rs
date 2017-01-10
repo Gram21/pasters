@@ -17,7 +17,6 @@ use r2d2::{Pool, Config};
 use r2d2_diesel::ConnectionManager;
 use dotenv::dotenv;
 use std::env;
-use std::borrow::Borrow;
 
 pub fn create_db_pool() -> Pool<ConnectionManager<PgConnection>> {
     dotenv().ok();
@@ -36,6 +35,7 @@ pub fn establish_connection() -> PgConnection {
 
 // pub fn get_connection<'a>(pool: Pool<ConnectionManager<PgConnection>>) -> &'a PgConnection {
 //     // TODO lifetime of borrowed value does not fit!
+//     // TODO Probably move this to main.rs. Maybe even create a macro instead of function
 //     let conn: &'a PgConnection = pool.get().expect("Problem accessing db!").borrow();
 //     conn
 // }
