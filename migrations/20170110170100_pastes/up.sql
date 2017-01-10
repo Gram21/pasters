@@ -1,0 +1,5 @@
+CREATE TABLE pastes (
+  id VARCHAR PRIMARY KEY,
+  key VARCHAR NOT NULL,
+  ttl INT NOT NULL
+);

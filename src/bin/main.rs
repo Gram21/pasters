@@ -6,6 +6,8 @@ extern crate rocket;
 extern crate rocket_contrib;
 extern crate rand;
 #[macro_use] extern crate lazy_static;
+extern crate plib;
+
 pub mod paste_id;
 pub mod paste_data;
 
@@ -16,9 +18,10 @@ use std::fs::remove_file;
 use std::io::Error;
 use std::collections::HashSet;
 use std::ops::DerefMut;
+use plib::models;
 
 fn main() {
-    //IDEA make a signal handler for catching interrupts and then save the current paste-set. At restart recover this set (if existing)
+    //IDEA Use a db to save the currently existing pastes
     thread::spawn(|| {
         loop {
             let interval = 60;
@@ -34,16 +37,16 @@ fn main() {
         .launch()
 }
 
-fn remove_old_files(pastes: &mut HashSet<routes::Paste>) -> std::io::Result<bool> {
+fn remove_old_files(pastes: &mut HashSet<models::Paste>) -> std::io::Result<bool> {
     let mut removed = false;
-    let mut removed_pastes: HashSet<routes::Paste> = HashSet::new();
+    let mut removed_pastes: HashSet<models::Paste> = HashSet::new();
     for paste in pastes.iter() {
         let file_string = "upload/".to_string() + &paste.get_id_cloned();
         let path = Path::new(&file_string);
         let metadata = try!(path.metadata());
         if let Ok(time) = metadata.modified() {
             let time_alive = time.elapsed().unwrap();
-            if time_alive > Duration::from_secs(paste.ttl) {
+            if time_alive > Duration::from_secs(u64::from(paste.ttl)) {
                 if remove_file(path).is_ok() {
                     removed = true;
                     removed_pastes.insert(paste.clone()); // save removed pastes for later
@@ -66,6 +69,7 @@ mod routes {
     use rocket;
     use paste_id::{self, PasteID};
     use paste_data::PasteData;
+    use plib::models::Paste;
     use std::io::Read;
     use std::path::{Path, PathBuf};
     use std::fs::{File, remove_file};
@@ -82,27 +86,6 @@ mod routes {
 
     lazy_static! {
         pub static ref PASTESET: Mutex<HashSet<Paste>> = Mutex::new(HashSet::new());
-    }
-
-    #[derive(Clone, Hash, Eq, PartialEq, Debug)]
-    pub struct Paste {
-        id: String,
-        key: String,
-        pub ttl: u64,
-    }
-
-    impl Paste {
-        pub fn new(id: String, key: String, ttl: u64) -> Paste {
-            Paste { id: id, key: key, ttl: ttl}
-        }
-
-        pub fn get_id_cloned(&self) -> String {
-            self.id.clone()
-        }
-
-        pub fn get_key_cloned(&self) -> String {
-            self.key.clone()
-        }
     }
 
     #[error(404)]
