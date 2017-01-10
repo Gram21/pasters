@@ -1,6 +1,6 @@
 [package]
 name = "pasters"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Gramy <jan.keim@protonmail.com>"]
 
 [[bin]]
