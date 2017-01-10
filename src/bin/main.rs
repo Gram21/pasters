@@ -5,7 +5,11 @@
 extern crate rocket;
 extern crate rocket_contrib;
 extern crate rand;
-#[macro_use] extern crate lazy_static;
+#[macro_use]
+extern crate lazy_static;
+extern crate diesel;
+extern crate r2d2;
+extern crate r2d2_diesel;
 extern crate plib;
 
 pub mod paste_id;
@@ -16,41 +20,82 @@ use std::time::Duration;
 use std::path::Path;
 use std::fs::remove_file;
 use std::io::Error;
-use std::collections::HashSet;
-use std::ops::DerefMut;
-use plib::models;
+
+use plib::*;
+use plib::models::Paste;
+
+use diesel::prelude::*;
+use diesel::pg::PgConnection;
+use r2d2::{Pool, PooledConnection, GetTimeout};
+use r2d2_diesel::ConnectionManager;
+
+use rocket::request::{FromRequest, Outcome};
+use rocket::Outcome::{Success, Failure};
+use rocket::Request;
+use rocket::http::Status;
 
 fn main() {
-    //IDEA Use a db to save the currently existing pastes
+    // IDEA Use a db to save the currently existing pastes
     thread::spawn(|| {
         loop {
             let interval = 60;
-            if let Err(err) = remove_old_files(routes::PASTESET.lock().unwrap().deref_mut()) {
-                    println!("Error: {}", err);
+            if let Err(err) = remove_old_files() {
+                println!("Error: {}", err);
             }
             thread::sleep(Duration::from_secs(interval))
         }
     });
     rocket::ignite()
         .catch(errors![routes::not_found, routes::too_large])
-        .mount("/", routes![routes::get_static, routes::index, routes::upload, routes::retrieve, routes::remove])
+        .mount("/",
+               routes![routes::get_static,
+                       routes::index,
+                       routes::upload,
+                       routes::retrieve,
+                       routes::remove])
         .launch()
 }
 
-fn remove_old_files(pastes: &mut HashSet<models::Paste>) -> std::io::Result<bool> {
-    let mut removed = false;
-    let mut removed_pastes: HashSet<models::Paste> = HashSet::new();
-    for paste in pastes.iter() {
+lazy_static! {
+    pub static ref DB_POOL: Pool<ConnectionManager<PgConnection>> = create_db_pool();
+}
+
+pub struct DB(PooledConnection<ConnectionManager<PgConnection>>);
+
+impl DB {
+    pub fn conn(&self) -> &PgConnection {
+        &*self.0
+    }
+}
+
+impl<'a, 'r> FromRequest<'a, 'r> for DB {
+    type Error = GetTimeout;
+    fn from_request(_: &'a Request<'r>) -> Outcome<Self, Self::Error> {
+        match DB_POOL.get() {
+            Ok(conn) => Success(DB(conn)),
+            Err(e) => Failure((Status::InternalServerError, e)),
+        }
+    }
+}
+
+fn remove_old_files() -> std::io::Result<usize> {
+    use plib::schema::pastes::dsl::*;
+
+    let mut count: usize = 0;
+
+    let conn = establish_connection();
+    let pastes_from_db = pastes.load::<Paste>(&conn).expect("Error loading pastes");
+    for paste in pastes_from_db {
         let file_string = "upload/".to_string() + &paste.get_id_cloned();
         let path = Path::new(&file_string);
         let metadata = try!(path.metadata());
         if let Ok(time) = metadata.modified() {
             let time_alive = time.elapsed().unwrap();
-            if time_alive > Duration::from_secs(u64::from(paste.ttl)) {
+            if time_alive > Duration::from_secs(paste.get_ttl()) {
                 if remove_file(path).is_ok() {
-                    removed = true;
-                    removed_pastes.insert(paste.clone()); // save removed pastes for later
-                    println!("Removed paste with id {}",
+                    // also remove from db
+                    count = count + del_paste_from_db(paste.get_id_cloned());
+                    println!("Removed file of paste {}",
                              path.file_name().unwrap().to_str().unwrap());
                 }
             }
@@ -58,35 +103,38 @@ fn remove_old_files(pastes: &mut HashSet<models::Paste>) -> std::io::Result<bool
             return Err(Error::last_os_error());
         }
     }
-    for rem_pastes in removed_pastes.iter() {
-        pastes.remove(rem_pastes); //remove now non-existent pastes from HashSet
-    }
-    Ok(removed)
+    Ok(count)
+}
+
+fn del_paste_from_db(p_id: String) -> usize {
+    use plib::schema::pastes::dsl::*;
+
+    let conn = establish_connection();
+    diesel::delete(pastes.filter(id.like(p_id)))
+        .execute(&conn)
+        .expect("Error deleting paste")
 }
 
 mod routes {
     use std;
     use rocket;
+    use diesel;
     use paste_id::{self, PasteID};
     use paste_data::PasteData;
     use plib::models::Paste;
     use std::io::Read;
     use std::path::{Path, PathBuf};
     use std::fs::{File, remove_file};
-    use std::collections::{HashMap, HashSet};
-    use std::sync::Mutex;
+    use std::collections::HashMap;
     use rand::{self, Rng};
     use rocket::response::{status, NamedFile, Redirect, Flash};
     use rocket::request::{Form, FlashMessage};
     use rocket::http::Status;
     use rocket_contrib::Template;
 
+
     static ERR_FILE_404: &'static str = "ERR_FILE_404";
     static MSG_FILE_404: &'static str = "Could not find file";
-
-    lazy_static! {
-        pub static ref PASTESET: Mutex<HashSet<Paste>> = Mutex::new(HashSet::new());
-    }
 
     #[error(404)]
     pub fn not_found(req: &rocket::Request) -> Template {
@@ -115,22 +163,28 @@ mod routes {
     }
 
     #[post("/", format="text/plain", data = "<paste>")]
-    pub fn upload(paste: PasteData) -> Result<Template, Redirect> {
+    pub fn upload(db: super::DB, paste: PasteData) -> Result<Template, Redirect> {
         // TODO add ttl option to Form and use it here
-        let id = PasteID::new(24);
+        use plib::schema::pastes;
+        use diesel::LoadDsl;
+
+        let p_id = PasteID::new(24);
         let mut map = HashMap::new();
-        match write_to_file(paste, &id) {
+        match write_to_file(paste, &p_id) {
             Ok(res) => {
-                let paste_id = format!("{}", id);
+                let paste_id = format!("{}", p_id);
                 let paste_key = generate_deletion_key();
                 let new_paste = Paste::new(paste_id, paste_key, 60 * 60 * 24 * 7); //TODO
                 map.insert("id", new_paste.get_id_cloned());
                 map.insert("key", new_paste.get_key_cloned());
-                map.insert("ttl", new_paste.ttl.to_string());
+                map.insert("ttl", new_paste.get_ttl().to_string());
                 map.insert("link", res.1.to_string());
-                PASTESET.lock().unwrap().insert(new_paste);
+                diesel::insert(&new_paste)
+                    .into(pastes::table)
+                    .get_result::<Paste>(db.conn())
+                    .expect("Error saving new paste");
                 return Ok(Template::render("success", &map));
-            },
+            }
             Err(res) => map.insert("error", res.to_string()),
         };
         Ok(Template::render("index", &map))
@@ -190,6 +244,8 @@ mod routes {
                 if remove_file(file).is_ok() {
                     map.insert("success",
                                format!("Paste {id} removed", id = paste_del.paste_id));
+                    // TODO remove paste from db!
+                    super::del_paste_from_db(paste_del.paste_id.into());
                 }
             } else {
                 map.insert("error", "Invalid Paste ID or Key".into());
