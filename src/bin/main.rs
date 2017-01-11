@@ -57,6 +57,7 @@ fn main() {
 }
 
 lazy_static! {
+    // TODO: are there race conditions? maybe cover with mutex
     pub static ref DB_POOL: Pool<ConnectionManager<PgConnection>> = create_db_pool();
 }
 
@@ -83,24 +84,26 @@ fn remove_old_files() -> std::io::Result<usize> {
 
     let mut count: usize = 0;
 
-    let conn = establish_connection();
-    let pastes_from_db = pastes.load::<Paste>(&conn).expect("Error loading pastes");
-    for paste in pastes_from_db {
-        let file_string = "upload/".to_string() + &paste.get_id_cloned();
-        let path = Path::new(&file_string);
-        let metadata = try!(path.metadata());
-        if let Ok(time) = metadata.modified() {
-            let time_alive = time.elapsed().unwrap();
-            if time_alive > Duration::from_secs(paste.get_ttl()) {
-                if remove_file(path).is_ok() {
-                    // also remove from db
-                    count = count + del_paste_from_db(paste.get_id_cloned());
-                    println!("Removed file of paste {}",
-                             path.file_name().unwrap().to_str().unwrap());
+    if let Ok(pool_conn) = DB_POOL.get() {
+        let ref conn = *pool_conn;
+        let pastes_from_db = pastes.load::<Paste>(conn).expect("Error loading pastes");
+        for paste in pastes_from_db {
+            let file_string = "upload/".to_string() + &paste.get_id_cloned();
+            let path = Path::new(&file_string);
+            let metadata = try!(path.metadata());
+            if let Ok(time) = metadata.modified() {
+                let time_alive = time.elapsed().unwrap();
+                if time_alive > Duration::from_secs(paste.get_ttl()) {
+                    if remove_file(path).is_ok() {
+                        // also remove from db
+                        count = count + del_paste_from_db(paste.get_id_cloned());
+                        println!("Removed file of paste {}",
+                                 path.file_name().unwrap().to_str().unwrap());
+                    }
                 }
+            } else {
+                return Err(Error::last_os_error());
             }
-        } else {
-            return Err(Error::last_os_error());
         }
     }
     Ok(count)
@@ -109,10 +112,14 @@ fn remove_old_files() -> std::io::Result<usize> {
 fn del_paste_from_db(p_id: String) -> usize {
     use plib::schema::pastes::dsl::*;
 
-    let conn = establish_connection();
-    diesel::delete(pastes.filter(id.like(p_id)))
-        .execute(&conn)
-        .expect("Error deleting paste")
+    if let Ok(pool_conn) = DB_POOL.get() {
+        let ref conn = *pool_conn;
+        diesel::delete(pastes.filter(id.like(p_id)))
+            .execute(conn)
+            .expect("Error deleting paste")
+    } else {
+        0
+    }
 }
 
 mod routes {
@@ -234,6 +241,7 @@ mod routes {
     #[post("/remove", data = "<del_form>")]
     pub fn remove<'a>(del_form: Form<'a, PasteDel<'a>>) -> Template {
         let paste_del = del_form.get();
+        // TODO get Paste from db with the corresponding id (if existing)
         let filename = format!("upload/{id}", id = paste_del.paste_id);
         let file = Path::new(&filename);
         let mut map = HashMap::new();
@@ -244,7 +252,6 @@ mod routes {
                 if remove_file(file).is_ok() {
                     map.insert("success",
                                format!("Paste {id} removed", id = paste_del.paste_id));
-                    // TODO remove paste from db!
                     super::del_paste_from_db(paste_del.paste_id.into());
                 }
             } else {
