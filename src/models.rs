@@ -1,5 +1,5 @@
 use super::schema::pastes;
-#[derive(Clone, Hash, Eq, PartialEq, Debug, Queryable, Insertable)]
+#[derive(Debug, Queryable, Insertable)]
 #[table_name="pastes"]
 pub struct Paste {
     id: String,
@@ -24,8 +24,8 @@ impl Paste {
         self.key.clone()
     }
 
-    pub fn get_ttl(&self) -> u64 {
-        // TODO
+    pub fn get_ttl_u64(&self) -> u64 {
+        // TODO convert i32 to u64
         // 60 * 60 * 24 * 7
         30
     }

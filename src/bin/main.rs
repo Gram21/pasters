@@ -35,14 +35,13 @@ use rocket::Request;
 use rocket::http::Status;
 
 fn main() {
-    // IDEA Use a db to save the currently existing pastes
     thread::spawn(|| {
         loop {
             let interval = 60;
             if let Err(err) = remove_old_files() {
                 println!("Error: {}", err);
             }
-            thread::sleep(Duration::from_secs(interval))
+            thread::sleep(Duration::from_secs(interval)) //TODO maybe make this better
         }
     });
     rocket::ignite()
@@ -90,10 +89,16 @@ fn remove_old_files() -> std::io::Result<usize> {
         for paste in pastes_from_db {
             let file_string = "upload/".to_string() + &paste.get_id_cloned();
             let path = Path::new(&file_string);
+            if !path.exists() {
+                // file does not exist. Remove from db and then continue the loop
+                println!("Removed zombie paste.");
+                del_paste_from_db(paste.get_id_cloned());
+                continue;
+            }
             let metadata = try!(path.metadata());
             if let Ok(time) = metadata.modified() {
                 let time_alive = time.elapsed().unwrap();
-                if time_alive > Duration::from_secs(paste.get_ttl()) {
+                if time_alive > Duration::from_secs(paste.get_ttl_u64()) {
                     if remove_file(path).is_ok() {
                         // also remove from db
                         count = count + del_paste_from_db(paste.get_id_cloned());
@@ -184,7 +189,7 @@ mod routes {
                 let new_paste = Paste::new(paste_id, paste_key, 60 * 60 * 24 * 7); //TODO
                 map.insert("id", new_paste.get_id_cloned());
                 map.insert("key", new_paste.get_key_cloned());
-                map.insert("ttl", new_paste.get_ttl().to_string());
+                map.insert("ttl", new_paste.get_ttl_u64().to_string());
                 map.insert("link", res.1.to_string());
                 diesel::insert(&new_paste)
                     .into(pastes::table)
@@ -241,14 +246,12 @@ mod routes {
     #[post("/remove", data = "<del_form>")]
     pub fn remove<'a>(del_form: Form<'a, PasteDel<'a>>) -> Template {
         let paste_del = del_form.get();
-        // TODO get Paste from db with the corresponding id (if existing)
         let filename = format!("upload/{id}", id = paste_del.paste_id);
         let file = Path::new(&filename);
         let mut map = HashMap::new();
         if file.exists() {
             let key = paste_del.paste_key;
-            // TODO change to generated paste key
-            if key == "password" {
+            if key == get_paste_key(paste_del.paste_id.into()) {
                 if remove_file(file).is_ok() {
                     map.insert("success",
                                format!("Paste {id} removed", id = paste_del.paste_id));
@@ -261,6 +264,22 @@ mod routes {
             map.insert("error", "Invalid Paste ID or Key".into());
         }
         Template::render("index", &map)
+    }
+
+    fn get_paste_key(paste_id: String) -> String {
+        use plib::schema::pastes::dsl::*;
+        use diesel::prelude::*;
+
+        if let Ok(pool_conn) = super::DB_POOL.get() {
+            let ref conn = *pool_conn;
+            let k = pastes.find(paste_id)
+                .first::<Paste>(conn)
+                .expect("Error loading paste");
+            k.get_key_cloned()
+        } else {
+            // db connection could not be established, return random key
+            generate_deletion_key()
+        }
     }
 
     #[get("/static/<file..>")]
