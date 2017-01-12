@@ -3,6 +3,8 @@ rust:
   - nightly
 services:
   - postgresql
+env:
+  - PATH=$PATH:/home/travis/.cargo/bin
 install:
   - cargo install diesel_cli
 before_script:
