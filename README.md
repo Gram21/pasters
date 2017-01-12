@@ -1,5 +1,7 @@
+[![Build Status](https://travis-ci.org/Gram21/pasters.svg?branch=master)](https://travis-ci.org/Gram21/pasters)
 # pasters
-Small paste service written in Rust
+
+Small paste service written in Rust.
 
 # Requirements
 
