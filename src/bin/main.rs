@@ -338,7 +338,7 @@ mod tests {
             }
 
             it "basic paste" {
-                let req = base_req.header(ContentType::Plain)
+                let mut req = base_req.header(ContentType::Plain)
                         .body(&format!("paste={paste}", paste = "TODO"));
                 let mut res = req.dispatch_with(&rocket);
                 let body_str = res.body()
