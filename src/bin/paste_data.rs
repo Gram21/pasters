@@ -4,7 +4,7 @@ use rocket::data::{self, FromData, Data};
 use rocket::http::{Status, ContentType};
 use std::fs::File;
 use std::io;
-use std::io::{Write, BufWriter, Read};
+use std::io::{Write, Read};
 use std::path::Path;
 
 pub struct PasteData {
@@ -13,9 +13,8 @@ pub struct PasteData {
 
 impl PasteData {
     pub fn stream_to_file<P: AsRef<Path>>(self, path: P) -> Result<(), io::Error> {
-        let f = File::create(path).expect("Unable to create file");
-        let mut f = BufWriter::new(f);
-        f.write_all(self.content.as_bytes())
+        let mut f = File::create(path).expect("Unable to create file");
+        f.write_all(&self.content.as_bytes())
     }
 }
 

@@ -99,11 +99,8 @@ fn remove_old_files() -> Result<usize> {
             continue;
         }
         let metadata = try!(path.metadata());
-        let time = metadata.modified();
-        if time.is_err() {
-            return Err(Error::last_os_error());
-        }
-        let time_alive = time.unwrap().elapsed().expect("Could not get elapsed time!");
+        let time = try!(metadata.modified());
+        let time_alive = time.elapsed().expect("Could not get elapsed time!");
         if time_alive > Duration::from_secs(paste.get_ttl_u64()) && remove_file(path).is_ok() {
             // also remove from db
             count += del_paste_from_db(paste.get_id_cloned());
