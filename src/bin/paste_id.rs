@@ -39,9 +39,10 @@ impl<'a> FromParam<'a> for PasteID<'a> {
     type Error = &'a str;
 
     fn from_param(param: &'a str) -> Result<PasteID<'a>, &'a str> {
-        match valid_id(param) {
-            true => Ok(PasteID(Cow::Borrowed(param))),
-            false => Err(param),
+        if valid_id(param) {
+            Ok(PasteID(Cow::Borrowed(param)))
+        } else {
+            Err(param)
         }
     }
 }

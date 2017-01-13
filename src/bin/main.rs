@@ -18,9 +18,7 @@ pub mod paste_id;
 pub mod paste_data;
 
 use diesel::pg::PgConnection;
-
 use diesel::prelude::*;
-
 use plib::*;
 use plib::models::Paste;
 use r2d2::{Pool, PooledConnection, GetTimeout};
@@ -28,9 +26,9 @@ use r2d2_diesel::ConnectionManager;
 use rocket::Outcome::{Success, Failure};
 use rocket::Request;
 use rocket::http::Status;
-
 use rocket::request::{FromRequest, Outcome};
 use std::fs::remove_file;
+use std::io::*;
 use std::io::Error;
 use std::path::Path;
 use std::thread;
@@ -80,37 +78,39 @@ impl<'a, 'r> FromRequest<'a, 'r> for DB {
     }
 }
 
-fn remove_old_files() -> std::io::Result<usize> {
+fn remove_old_files() -> Result<usize> {
     use plib::schema::pastes::dsl::*;
 
     let mut count: usize = 0;
 
-    if let Ok(pool_conn) = DB_POOL.get() {
-        let ref conn = *pool_conn;
-        let pastes_from_db = pastes.load::<Paste>(conn).expect("Error loading pastes");
-        for paste in pastes_from_db {
-            let file_string = "upload/".to_string() + &paste.get_id_cloned();
-            let path = Path::new(&file_string);
-            if !path.exists() {
-                // file does not exist. Remove from db and then continue the loop
-                println!("Removed zombie paste.");
-                del_paste_from_db(paste.get_id_cloned());
-                continue;
-            }
-            let metadata = try!(path.metadata());
-            if let Ok(time) = metadata.modified() {
-                let time_alive = time.elapsed().unwrap();
-                if time_alive > Duration::from_secs(paste.get_ttl_u64()) {
-                    if remove_file(path).is_ok() {
-                        // also remove from db
-                        count = count + del_paste_from_db(paste.get_id_cloned());
-                        println!("Removed file of paste {}",
-                                 path.file_name().unwrap().to_str().unwrap());
-                    }
-                }
-            } else {
-                return Err(Error::last_os_error());
-            }
+    let pool_conn = DB_POOL.get();
+    if let Err(err) = pool_conn {
+        return Err(Error::new(ErrorKind::Other, err.to_string()));
+    }
+
+    let conn = &(*pool_conn.expect("Could not unwrap pooled connection!"));
+    let pastes_from_db = pastes.load::<Paste>(conn).expect("Error loading pastes");
+    for paste in pastes_from_db {
+        let file_string = "upload/".to_string() + &paste.get_id_cloned();
+        let path = Path::new(&file_string);
+        if !path.exists() {
+            // file does not exist. Remove from db and then continue the loop
+            println!("Removed zombie paste");
+            del_paste_from_db(paste.get_id_cloned());
+            continue;
+        }
+        let metadata = try!(path.metadata());
+        let time = metadata.modified();
+        if time.is_err() {
+            return Err(Error::last_os_error());
+        }
+        let time_alive = time.unwrap().elapsed().expect("Could not get elapsed time!");
+        if time_alive > Duration::from_secs(paste.get_ttl_u64()) && remove_file(path).is_ok() {
+            // also remove from db
+            count += del_paste_from_db(paste.get_id_cloned());
+            println!("Removed file of paste {}",
+                     path.file_name().unwrap().to_str().unwrap());
+
         }
     }
     Ok(count)
@@ -120,7 +120,7 @@ fn del_paste_from_db(p_id: String) -> usize {
     use plib::schema::pastes::dsl::*;
 
     if let Ok(pool_conn) = DB_POOL.get() {
-        let ref conn = *pool_conn;
+        let conn = &(*pool_conn);
         diesel::delete(pastes.filter(id.like(p_id)))
             .execute(conn)
             .expect("Error deleting paste")
@@ -145,7 +145,6 @@ mod routes {
     use std::fs::{File, remove_file};
     use std::io::Read;
     use std::path::{Path, PathBuf};
-
 
     static ERR_FILE_404: &'static str = "ERR_FILE_404";
     static MSG_FILE_404: &'static str = "Could not find file";
@@ -215,7 +214,7 @@ mod routes {
         for _ in 0..16 {
             key.push(paste_id::BASE62[rng.gen::<usize>() % 62] as char);
         }
-        return key;
+        key
     }
 
     fn write_to_file(paste: PasteData, id: &PasteID) -> std::io::Result<status::Custom<String>> {
@@ -253,12 +252,10 @@ mod routes {
         let mut map = HashMap::new();
         if file.exists() {
             let key = paste_del.paste_key;
-            if key == get_paste_key(paste_del.paste_id.into()) {
-                if remove_file(file).is_ok() {
-                    map.insert("success",
-                               format!("Paste {id} removed", id = paste_del.paste_id));
-                    super::del_paste_from_db(paste_del.paste_id.into());
-                }
+            if key == get_paste_key(paste_del.paste_id.into()) && remove_file(file).is_ok() {
+                map.insert("success",
+                           format!("Paste {id} removed", id = paste_del.paste_id));
+                super::del_paste_from_db(paste_del.paste_id.into());
             } else {
                 map.insert("error", "Invalid Paste ID or Key".into());
             }
@@ -273,7 +270,7 @@ mod routes {
         use diesel::prelude::*;
 
         if let Ok(pool_conn) = super::DB_POOL.get() {
-            let ref conn = *pool_conn;
+            let conn = &(*pool_conn);
             let k = pastes.find(paste_id)
                 .first::<Paste>(conn)
                 .expect("Error loading paste");
@@ -302,8 +299,11 @@ mod tests {
         before_each {
             let rocket = rocket::ignite()
                 .catch(errors![routes::not_found, routes::too_large])
-                .mount("/", routes![routes::get_static, routes::index,
-                routes::upload, routes::retrieve, routes::remove]);
+                .mount("/", routes![routes::get_static,
+                                    routes::index,
+                                    routes::upload,
+                                    routes::retrieve,
+                                    routes::remove]);
         }
 
         describe! status {
