@@ -294,7 +294,7 @@ mod tests {
     use routes;
     use rocket;
     use rocket::testing::MockRequest;
-    use rocket::http::{Status, Method};
+    use rocket::http::{Status, Method, ContentType};
 
     describe! route_tests{
         before_each {
@@ -324,6 +324,20 @@ mod tests {
                 let mut req = MockRequest::new(Method::Get, "/invalid_url");
                 let res = req.dispatch_with(&rocket);
                 assert_eq!(res.status(), Status::NotFound);
+            }
+        }
+
+        describe! post_paste {
+            before_each {
+                let mut base_req = MockRequest::new(Method::Post, "/");
+            }
+
+            it "basic paste" {
+                let mut req = base_req.header(ContentType::Plain).body(&format!("paste={paste}", paste = "TODO"));
+                let mut res = req.dispatch_with(&rocket);
+                let body_str = res.body().and_then(|b| b.into_string()).expect("Result has no body!");
+
+                assert!(body_str.contains("ID:"));
             }
         }
     }
