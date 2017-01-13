@@ -89,8 +89,7 @@ fn remove_old_files() -> Result<usize> {
     }
 
     let conn = &(*pool_conn.expect("Could not unwrap pooled connection!"));
-    let pastes_from_db = pastes.load::<Paste>(conn).expect("Error loading pastes");
-    for paste in pastes_from_db {
+    for paste in pastes.load::<Paste>(conn).expect("Error loading pastes") {
         let file_string = "upload/".to_string() + &paste.get_id_cloned();
         let path = Path::new(&file_string);
         if !path.exists() {
@@ -181,7 +180,7 @@ mod routes {
         use plib::schema::pastes;
         use diesel::LoadDsl;
 
-        let p_id = PasteID::new(24);
+        let p_id = PasteID::new();
         let mut map = HashMap::new();
         match write_to_file(paste, &p_id) {
             Ok(res) => {
@@ -234,7 +233,7 @@ mod routes {
             let mut map = HashMap::new();
             map.insert("paste", data);
             return Ok(Template::render("paste", &map));
-        };
+        }
         Err(Flash::error(Redirect::to("/"), ERR_FILE_404))
     }
 
@@ -295,6 +294,21 @@ mod tests {
     use rocket::testing::MockRequest;
     use routes;
 
+    fn post_data_req(size: u64, rocket: &rocket::Rocket) -> (Status, String) {
+        let mut paste = String::new();
+        for _ in 0..(size / 2) {
+            paste += "XX";
+        }
+        let mut req = MockRequest::new(Method::Post, "/")
+            .header(ContentType::Plain)
+            .body(&format!("paste={paste}", paste = paste));
+        let mut res = req.dispatch_with(rocket);
+        let body_str = res.body()
+            .and_then(|b| b.into_string())
+            .expect("Result has no body!");
+        (res.status(), body_str)
+    }
+
     describe! route_tests{
         before_each {
             let rocket = rocket::ignite()
@@ -333,53 +347,24 @@ mod tests {
         }
 
         describe! post_paste {
-            before_each {
-                let mut base_req = MockRequest::new(Method::Post, "/");
-            }
-
             it "basic paste" {
-                let mut req = base_req.header(ContentType::Plain)
-                        .body(&format!("paste={paste}", paste = "This is a test paste"));
-                let mut res = req.dispatch_with(&rocket);
-                let body_str = res.body()
-                            .and_then(|b| b.into_string())
-                            .expect("Result has no body!");
+                let (status, body_str) = post_data_req(42, &rocket);
 
-                assert_eq!(res.status(), Status::Ok);
+                assert_eq!(status, Status::Ok);
                 assert!(body_str.contains("ID:"));
             }
 
             it "medium long paste" {
-                let mut test_paste = String::new();
-                for i in 0..200 {
-                    test_paste += "Test ";
-                }
-                let mut req = base_req.header(ContentType::Plain)
-                        .body(&format!("paste={paste}", paste = test_paste));
-                let mut res = req.dispatch_with(&rocket);
-                let body_str = res.body()
-                            .and_then(|b| b.into_string())
-                            .expect("Result has no body!");
+                let (status, body_str) = post_data_req(420, &rocket);
 
-                assert_eq!(res.status(), Status::Ok);
+                assert_eq!(status, Status::Ok);
                 assert!(body_str.contains("ID:"));
             }
 
             it "too long paste" {
                 //TODO check!
-                let size = 10 * 1024 * 1024;
-                let mut test_paste = String::new();
-                for i in 0..size {
-                    test_paste += "Test ";
-                }
-                let mut req = base_req.header(ContentType::Plain)
-                        .body(&format!("paste={paste}", paste = test_paste));
-                let mut res = req.dispatch_with(&rocket);
-                let body_str = res.body()
-                            .and_then(|b| b.into_string())
-                            .expect("Result has no body!");
-
-                assert_eq!(res.status(), Status::Ok); //shoudl be Status::PayloadTooLarge
+                let (status, body_str) = post_data_req(10 * 1024 * 1024, &rocket);
+                assert_eq!(status, Status::Ok); //should be Status::PayloadTooLarge
                 assert!(body_str.contains("ID:"));
             }
         }
