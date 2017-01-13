@@ -49,7 +49,6 @@ impl FromData for PasteData {
             Some(i) => &data_string[(i + 1)..],
             None => return Outcome::Failure((Status::BadRequest, "Missing 'paste='.".into())),
         };
-
         Outcome::Success(PasteData { content: real_data.to_string() })
     }
 }

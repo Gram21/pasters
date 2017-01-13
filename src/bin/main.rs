@@ -288,7 +288,7 @@ mod routes {
 }
 
 #[cfg(test)]
-#[allow(unused_variables)]
+#[allow(unused_variables, unused_mut)]
 mod tests {
     use rocket;
     use rocket::http::{Status, Method, ContentType};
@@ -339,13 +339,47 @@ mod tests {
 
             it "basic paste" {
                 let mut req = base_req.header(ContentType::Plain)
-                        .body(&format!("paste={paste}", paste = "TODO"));
+                        .body(&format!("paste={paste}", paste = "This is a test paste"));
                 let mut res = req.dispatch_with(&rocket);
                 let body_str = res.body()
                             .and_then(|b| b.into_string())
                             .expect("Result has no body!");
 
                 assert_eq!(res.status(), Status::Ok);
+                assert!(body_str.contains("ID:"));
+            }
+
+            it "medium long paste" {
+                let mut test_paste = String::new();
+                for i in 0..200 {
+                    test_paste += "Test ";
+                }
+                let mut req = base_req.header(ContentType::Plain)
+                        .body(&format!("paste={paste}", paste = test_paste));
+                let mut res = req.dispatch_with(&rocket);
+                let body_str = res.body()
+                            .and_then(|b| b.into_string())
+                            .expect("Result has no body!");
+
+                assert_eq!(res.status(), Status::Ok);
+                assert!(body_str.contains("ID:"));
+            }
+
+            it "too long paste" {
+                //TODO check!
+                let size = 10 * 1024 * 1024;
+                let mut test_paste = String::new();
+                for i in 0..size {
+                    test_paste += "Test ";
+                }
+                let mut req = base_req.header(ContentType::Plain)
+                        .body(&format!("paste={paste}", paste = test_paste));
+                let mut res = req.dispatch_with(&rocket);
+                let body_str = res.body()
+                            .and_then(|b| b.into_string())
+                            .expect("Result has no body!");
+
+                assert_eq!(res.status(), Status::Ok); //shoudl be Status::PayloadTooLarge
                 assert!(body_str.contains("ID:"));
             }
         }
