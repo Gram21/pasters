@@ -1,7 +1,7 @@
-use std::fmt;
-use std::borrow::Cow;
 use rand::{self, Rng};
 use rocket::request::FromParam;
+use std::borrow::Cow;
+use std::fmt;
 
 pub const BASE62: &'static [u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 

@@ -1,11 +1,11 @@
+use rocket::Outcome;
+use rocket::Request;
+use rocket::data::{self, FromData, Data};
+use rocket::http::{Status, ContentType};
+use std::fs::File;
 use std::io;
 use std::io::{Write, BufWriter, Read};
 use std::path::Path;
-use std::fs::File;
-use rocket::Request;
-use rocket::data::{self, FromData, Data};
-use rocket::Outcome;
-use rocket::http::{Status, ContentType};
 
 pub struct PasteData {
     content: String,

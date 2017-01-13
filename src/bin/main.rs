@@ -1,6 +1,8 @@
 #![feature(plugin, custom_derive)]
 #![plugin(rocket_codegen)]
 #![cfg_attr(test, plugin(stainless))]
+#![cfg_attr(feature = "dev", allow(unstable_features))]
+#![cfg_attr(feature = "dev", plugin(clippy))]
 
 extern crate rocket;
 extern crate rocket_contrib;
@@ -15,24 +17,24 @@ extern crate plib;
 pub mod paste_id;
 pub mod paste_data;
 
-use std::thread;
-use std::time::Duration;
-use std::path::Path;
-use std::fs::remove_file;
-use std::io::Error;
+use diesel::pg::PgConnection;
+
+use diesel::prelude::*;
 
 use plib::*;
 use plib::models::Paste;
-
-use diesel::prelude::*;
-use diesel::pg::PgConnection;
 use r2d2::{Pool, PooledConnection, GetTimeout};
 use r2d2_diesel::ConnectionManager;
-
-use rocket::request::{FromRequest, Outcome};
 use rocket::Outcome::{Success, Failure};
 use rocket::Request;
 use rocket::http::Status;
+
+use rocket::request::{FromRequest, Outcome};
+use std::fs::remove_file;
+use std::io::Error;
+use std::path::Path;
+use std::thread;
+use std::time::Duration;
 
 fn main() {
     thread::spawn(|| {
@@ -128,21 +130,21 @@ fn del_paste_from_db(p_id: String) -> usize {
 }
 
 mod routes {
-    use std;
-    use rocket;
     use diesel;
-    use paste_id::{self, PasteID};
     use paste_data::PasteData;
+    use paste_id::{self, PasteID};
     use plib::models::Paste;
+    use rand::{self, Rng};
+    use rocket;
+    use rocket::http::Status;
+    use rocket::request::{Form, FlashMessage};
+    use rocket::response::{status, NamedFile, Redirect, Flash};
+    use rocket_contrib::Template;
+    use std;
+    use std::collections::HashMap;
+    use std::fs::{File, remove_file};
     use std::io::Read;
     use std::path::{Path, PathBuf};
-    use std::fs::{File, remove_file};
-    use std::collections::HashMap;
-    use rand::{self, Rng};
-    use rocket::response::{status, NamedFile, Redirect, Flash};
-    use rocket::request::{Form, FlashMessage};
-    use rocket::http::Status;
-    use rocket_contrib::Template;
 
 
     static ERR_FILE_404: &'static str = "ERR_FILE_404";
@@ -291,23 +293,26 @@ mod routes {
 #[cfg(test)]
 #[allow(unused_variables)]
 mod tests {
-    use routes;
     use rocket;
-    use rocket::testing::MockRequest;
     use rocket::http::{Status, Method, ContentType};
+    use rocket::testing::MockRequest;
+    use routes;
 
     describe! route_tests{
         before_each {
             let rocket = rocket::ignite()
                 .catch(errors![routes::not_found, routes::too_large])
-                .mount("/", routes![routes::get_static, routes::index, routes::upload, routes::retrieve, routes::remove]);
+                .mount("/", routes![routes::get_static, routes::index,
+                routes::upload, routes::retrieve, routes::remove]);
         }
 
         describe! status {
             before_each {
                 let mut req = MockRequest::new(Method::Get, "/");
                 let mut res = req.dispatch_with(&rocket);
-                let body_str = res.body().and_then(|b| b.into_string()).expect("Result has no body!");
+                let body_str = res.body()
+                            .and_then(|b| b.into_string())
+                            .expect("Result has no body!");
             }
 
             it "responds with status OK 200" {
@@ -333,10 +338,14 @@ mod tests {
             }
 
             it "basic paste" {
-                let mut req = base_req.header(ContentType::Plain).body(&format!("paste={paste}", paste = "TODO"));
+                let req = base_req.header(ContentType::Plain)
+                        .body(&format!("paste={paste}", paste = "TODO"));
                 let mut res = req.dispatch_with(&rocket);
-                let body_str = res.body().and_then(|b| b.into_string()).expect("Result has no body!");
+                let body_str = res.body()
+                            .and_then(|b| b.into_string())
+                            .expect("Result has no body!");
 
+                assert_eq!(res.status(), Status::Ok);
                 assert!(body_str.contains("ID:"));
             }
         }

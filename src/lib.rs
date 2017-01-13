@@ -12,9 +12,9 @@ pub mod schema;
 pub mod models;
 
 use diesel::pg::PgConnection;
+use dotenv::dotenv;
 use r2d2::{Pool, Config};
 use r2d2_diesel::ConnectionManager;
-use dotenv::dotenv;
 use std::env;
 
 pub fn create_db_pool() -> Pool<ConnectionManager<PgConnection>> {
