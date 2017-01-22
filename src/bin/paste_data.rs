@@ -27,8 +27,8 @@ impl FromData for PasteData {
             return Outcome::Forward(data);
         }
 
-        // Check size
-        let max_size = 4 * 1024 * 1024; //TODO
+        // Check size //TODO which size?
+        let max_size = 4 * 1024 * 1024 + 6; // +6 because we have "paste=" in it
         let req_headers = req.headers();
         let content_len_it = req_headers.get("Content-Length");
         for c in content_len_it {

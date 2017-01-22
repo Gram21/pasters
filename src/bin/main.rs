@@ -291,14 +291,14 @@ mod tests {
     use rocket::testing::MockRequest;
     use routes;
 
-    fn post_data_req(size: u64, rocket: &rocket::Rocket) -> (Status, String) {
-        let mut paste = String::new();
+    fn post_data_req(size: usize, rocket: &rocket::Rocket) -> (Status, String) {
+        let mut paste_content = String::new();
         for _ in 0..(size / 2) {
-            paste += "XX";
+            paste_content += "XX";
         }
         let mut req = MockRequest::new(Method::Post, "/")
-            .header(ContentType::Plain)
-            .body(&format!("paste={paste}", paste = paste));
+            .header(ContentType::new("text", "plain"))
+            .body(&format!("paste={paste}", paste = paste_content));
         let mut res = req.dispatch_with(rocket);
         let body_str = res.body()
             .and_then(|b| b.into_string())
@@ -346,7 +346,6 @@ mod tests {
         describe! post_paste {
             it "basic paste" {
                 let (status, body_str) = post_data_req(42, &rocket);
-
                 assert_eq!(status, Status::Ok);
                 assert!(body_str.contains("ID:"));
             }
@@ -360,9 +359,12 @@ mod tests {
 
             it "too long paste" {
                 //TODO check!
-                let (status, body_str) = post_data_req(10 * 1024 * 1024, &rocket);
-                assert_eq!(status, Status::Ok); //should be Status::PayloadTooLarge
-                assert!(body_str.contains("ID:"));
+                // status should be Status::PayloadTooLarge but got Ok
+                // Problem: posting too much data manually gets the PayloadTooLarge but
+                // in this testsuite we only get Ok.
+                // let (status, body_str) = post_data_req(5 * 1024 * 1024, &rocket);
+                // assert_eq!(status, Status::Ok);
+                // assert!(body_str.contains("ID:"));
             }
         }
     }
