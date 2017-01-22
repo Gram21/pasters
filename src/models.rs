@@ -25,8 +25,6 @@ impl Paste {
     }
 
     pub fn get_ttl_u64(&self) -> u64 {
-        // TODO convert i32 to u64
-        // 60 * 60 * 24 * 7
-        30
+        self.ttl as u64
     }
 }

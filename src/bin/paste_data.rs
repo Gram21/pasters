@@ -22,7 +22,7 @@ impl FromData for PasteData {
     type Error = String;
 
     fn from_data(req: &Request, data: Data) -> data::Outcome<Self, String> {
-        let corr_content_type = ContentType::Plain;
+        let corr_content_type = ContentType::new("text", "plain");
         if req.content_type() != corr_content_type {
             return Outcome::Forward(data);
         }
