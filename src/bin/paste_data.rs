@@ -23,7 +23,7 @@ impl FromData for PasteData {
 
     fn from_data(req: &Request, data: Data) -> data::Outcome<Self, String> {
         let corr_content_type = ContentType::new("text", "plain");
-        if req.content_type() != corr_content_type {
+        if req.content_type().expect("Could not extract content type") != corr_content_type {
             return Outcome::Forward(data);
         }
 
@@ -43,9 +43,9 @@ impl FromData for PasteData {
         if let Err(e) = data.open().read_to_string(&mut data_string) {
             return Outcome::Failure((Status::InternalServerError, format!("{:?}", e)));
         }
-        // remove the "paste=" from the raw data
-        let real_data = match data_string.find('=') {
-            Some(i) => &data_string[(i + 1)..],
+        // remove the "paste=" from the raw data //TODO: Problem that paste= must be at end of request
+        let real_data = match data_string.find("paste=") {
+            Some(i) => &data_string[(i + 6)..],
             None => return Outcome::Failure((Status::BadRequest, "Missing 'paste='.".into())),
         };
         Outcome::Success(PasteData { content: real_data.to_string() })

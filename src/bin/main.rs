@@ -5,10 +5,9 @@
 #![cfg_attr(feature = "dev", plugin(clippy))]
 
 extern crate rocket;
-extern crate rocket_contrib;
+#[macro_use] extern crate rocket_contrib;
 extern crate rand;
-#[macro_use]
-extern crate lazy_static;
+#[macro_use] extern crate lazy_static;
 extern crate diesel;
 extern crate r2d2;
 extern crate r2d2_diesel;
@@ -52,6 +51,8 @@ fn main() {
                        routes::upload,
                        routes::retrieve,
                        routes::remove])
+        .mount("/json/", routes![routes::retrieve_json,
+                                 routes::upload_json])
         .launch()
 }
 
@@ -135,7 +136,7 @@ mod routes {
     use rocket::http::Status;
     use rocket::request::{Form, FlashMessage};
     use rocket::response::{status, NamedFile, Redirect, Flash};
-    use rocket_contrib::Template;
+    use rocket_contrib::{JSON, Value, Template};
     use std;
     use std::collections::HashMap;
     use std::fs::{File, remove_file};
@@ -174,6 +175,7 @@ mod routes {
     #[post("/", format="text/plain", data = "<paste>")]
     pub fn upload(db: super::DB, paste: PasteData) -> Result<Template, Redirect> {
         // TODO add ttl option to Form and use it here
+        // TODO refactor this using the json fn. transform the json in a format the renderr can work with
         use plib::schema::pastes;
         use diesel::LoadDsl;
 
@@ -199,6 +201,34 @@ mod routes {
         Ok(Template::render("index", &map))
     }
 
+    #[post("/", format="text/plain", data = "<paste>")]
+    pub fn upload_json(db: super::DB, paste: PasteData) -> JSON<Value> {
+        // TODO add ttl option to Form and use it here
+        use plib::schema::pastes;
+        use diesel::LoadDsl;
+
+        let p_id = PasteID::new();
+        match write_to_file(paste, &p_id) {
+            Ok(res) => {
+                let paste_id = format!("{}", p_id);
+                let paste_key = generate_deletion_key();
+                let new_paste = Paste::new(paste_id, paste_key, 60 * 60 * 24 * 7); //TODO
+                let ret_json = JSON(json!({
+                    "id": new_paste.get_id_cloned(),
+                    "key": new_paste.get_key_cloned(),
+                    "ttl": new_paste.get_ttl_u64().to_string(),
+                    "link": res.1.to_string()
+                }));
+                diesel::insert(&new_paste)
+                    .into(pastes::table)
+                    .get_result::<Paste>(db.conn())
+                    .expect("Error saving new paste");
+                ret_json
+            }
+            Err(res) => return JSON(json!({"error": res.to_string()}))
+        }
+    }
+
     // #[put("/<id>", format="text/plain", data = "<paste>")]
     // pub fn update(id: PasteID, paste: PasteData) -> std::io::Result<status::Custom<String>> {
     //     write_to_file(paste, id)
@@ -221,17 +251,34 @@ mod routes {
         Ok(status::Custom(Status::Created, output))
     }
 
-    #[get("/<id>", format="text/plain")]
+    #[get("/<id>")]
     pub fn retrieve(id: PasteID) -> Result<Template, Flash<Redirect>> {
         let filename = format!("upload/{id}", id = id);
-        let mut data = String::new();
-        if let Ok(mut f) = File::open(filename) {
-            f.read_to_string(&mut data).expect("Unable to read string");
+        if let Ok(data) = get_data(filename) {
             let mut map = HashMap::new();
             map.insert("paste", data);
             return Ok(Template::render("paste", &map));
         }
         Err(Flash::error(Redirect::to("/"), ERR_FILE_404))
+    }
+
+    #[get("/<id>")]
+    pub fn retrieve_json(id: PasteID) -> JSON<Value> {
+        let filename = format!("upload/{id}", id = id);
+        if let Ok(data) = get_data(filename) {
+            return JSON(json!({"paste": data}));
+        } else {
+            return JSON(json!({"error": ERR_FILE_404}));
+        }
+    }
+
+    fn get_data(filename: String) -> Result<String, String> {
+        let mut data = String::new();
+        if let Ok(mut f) = File::open(filename) {
+            f.read_to_string(&mut data).expect("Unable to read string");
+            return Ok(data);
+        }
+        Err(ERR_FILE_404.into())
     }
 
     #[derive(FromForm)]
@@ -348,23 +395,6 @@ mod tests {
                 let (status, body_str) = post_data_req(42, &rocket);
                 assert_eq!(status, Status::Ok);
                 assert!(body_str.contains("ID:"));
-            }
-
-            it "medium long paste" {
-                let (status, body_str) = post_data_req(420, &rocket);
-
-                assert_eq!(status, Status::Ok);
-                assert!(body_str.contains("ID:"));
-            }
-
-            it "too long paste" {
-                //TODO check!
-                // status should be Status::PayloadTooLarge but got Ok
-                // Problem: posting too much data manually gets the PayloadTooLarge but
-                // in this testsuite we only get Ok.
-                // let (status, body_str) = post_data_req(5 * 1024 * 1024, &rocket);
-                // assert_eq!(status, Status::Ok);
-                // assert!(body_str.contains("ID:"));
             }
         }
     }
