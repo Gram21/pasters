@@ -172,10 +172,8 @@ mod routes {
         Template::render("index", &map)
     }
 
-    #[post("/", format="text/plain", data = "<paste>")]
-    pub fn upload(db: super::DB, paste: PasteData) -> Result<Template, Redirect> {
+    fn save_paste<'a>(db: super::DB, paste: PasteData) -> HashMap<&'a str, String> {
         // TODO add ttl option to Form and use it here
-        // TODO refactor this using the json fn. transform the json in a format the renderr can work with
         use plib::schema::pastes;
         use diesel::LoadDsl;
 
@@ -194,39 +192,24 @@ mod routes {
                     .into(pastes::table)
                     .get_result::<Paste>(db.conn())
                     .expect("Error saving new paste");
-                return Ok(Template::render("success", &map));
             }
-            Err(res) => map.insert("error", res.to_string()),
+            Err(res) => {map.insert("error", res.to_string());}
         };
-        Ok(Template::render("index", &map))
+        map
+    }
+
+    #[post("/", format="text/plain", data = "<paste>")]
+    pub fn upload(db: super::DB, paste: PasteData) -> Result<Template, Redirect> {
+        let map = save_paste(db, paste);
+        if map.contains_key("error") {
+            return Ok(Template::render("index", &map));
+        }
+        Ok(Template::render("success", &map))
     }
 
     #[post("/", format="text/plain", data = "<paste>")]
     pub fn upload_json(db: super::DB, paste: PasteData) -> JSON<Value> {
-        // TODO add ttl option to Form and use it here
-        use plib::schema::pastes;
-        use diesel::LoadDsl;
-
-        let p_id = PasteID::new();
-        match write_to_file(paste, &p_id) {
-            Ok(res) => {
-                let paste_id = format!("{}", p_id);
-                let paste_key = generate_deletion_key();
-                let new_paste = Paste::new(paste_id, paste_key, 60 * 60 * 24 * 7); //TODO
-                let ret_json = JSON(json!({
-                    "id": new_paste.get_id_cloned(),
-                    "key": new_paste.get_key_cloned(),
-                    "ttl": new_paste.get_ttl_u64().to_string(),
-                    "link": res.1.to_string()
-                }));
-                diesel::insert(&new_paste)
-                    .into(pastes::table)
-                    .get_result::<Paste>(db.conn())
-                    .expect("Error saving new paste");
-                ret_json
-            }
-            Err(res) => return JSON(json!({"error": res.to_string()}))
-        }
+        JSON(json!(save_paste(db, paste)))
     }
 
     // #[put("/<id>", format="text/plain", data = "<paste>")]
@@ -268,7 +251,7 @@ mod routes {
         if let Ok(data) = get_data(filename) {
             return JSON(json!({"paste": data}));
         } else {
-            return JSON(json!({"error": ERR_FILE_404}));
+            return JSON(json!({"error": MSG_FILE_404}));
         }
     }
 
