@@ -20,22 +20,24 @@ path = "src/lib.rs"
 clippy = {version = "0.0.107", optional = true}
 diesel = { version = "0.9.*", features = ["postgres"] }
 diesel_codegen = { version = "0.9.*", features = ["postgres"] }
-dotenv = "0.8.*"
-lazy_static = "0.2.*"
-r2d2 = "0.7.*"
-r2d2-diesel = "0.9.*"
-rand = "0.3.*"
-rocket = "0.2.*"
-rocket_codegen = "0.2.*"
+dotenv = "0.8"
+lazy_static = "0.2"
+r2d2 = "0.7"
+r2d2-diesel = "0.9"
+rand = "0.3"
+rocket = "0.2"
+rocket_codegen = "0.2"
+serde = "0.9"
+serde_derive = "0.9"
 
 
 
 [dev-dependencies]
 stainless = "*"
-rocket = { version = "0.2.*", features = ["testing"] }
+rocket = { version = "0.2", features = ["testing"] }
 
 [dependencies.rocket_contrib]
-version = "0.2.*"
+version = "0.2"
 default-features = false
 features = ["handlebars_templates", "json"]
 

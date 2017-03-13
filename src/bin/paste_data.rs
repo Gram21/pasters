@@ -7,6 +7,7 @@ use std::io;
 use std::io::{Write, Read};
 use std::path::Path;
 
+#[derive(Serialize, Deserialize)]
 pub struct PasteData {
     content: String,
 }
@@ -14,7 +15,7 @@ pub struct PasteData {
 impl PasteData {
     pub fn stream_to_file<P: AsRef<Path>>(self, path: P) -> Result<(), io::Error> {
         let mut f = File::create(path).expect("Unable to create file");
-        f.write_all(&self.content.as_bytes())
+        f.write_all(self.content.as_bytes())
     }
 }
 
@@ -43,7 +44,7 @@ impl FromData for PasteData {
         if let Err(e) = data.open().read_to_string(&mut data_string) {
             return Outcome::Failure((Status::InternalServerError, format!("{:?}", e)));
         }
-        // remove the "paste=" from the raw data //TODO: Problem that paste= must be at end of request
+        // remove the "paste=" from the raw data //TODO Problem: paste= must be at end of request
         let real_data = match data_string.find("paste=") {
             Some(i) => &data_string[(i + 6)..],
             None => return Outcome::Failure((Status::BadRequest, "Missing 'paste='.".into())),

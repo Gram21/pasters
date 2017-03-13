@@ -7,6 +7,7 @@ pub const BASE62: &'static [u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh
 const SIZE: usize = 24;
 
 /// A _probably_ unique paste ID.
+#[derive(Default)]
 pub struct PasteID<'a>(Cow<'a, str>);
 
 impl<'a> PasteID<'a> {

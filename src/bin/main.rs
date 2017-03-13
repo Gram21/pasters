@@ -5,9 +5,13 @@
 #![cfg_attr(feature = "dev", plugin(clippy))]
 
 extern crate rocket;
-#[macro_use] extern crate rocket_contrib;
+#[macro_use]
+extern crate rocket_contrib;
 extern crate rand;
-#[macro_use] extern crate lazy_static;
+#[macro_use]
+extern crate lazy_static;
+#[macro_use]
+extern crate serde_derive;
 extern crate diesel;
 extern crate r2d2;
 extern crate r2d2_diesel;
@@ -49,10 +53,10 @@ fn main() {
                routes![routes::get_static,
                        routes::index,
                        routes::upload,
+                       routes::upload_json,
                        routes::retrieve,
+                       routes::retrieve_json,
                        routes::remove])
-        .mount("/json/", routes![routes::retrieve_json,
-                                 routes::upload_json])
         .launch()
 }
 
@@ -172,7 +176,7 @@ mod routes {
         Template::render("index", &map)
     }
 
-    fn save_paste<'a>(db: super::DB, paste: PasteData) -> HashMap<&'a str, String> {
+    fn save_paste<'a>(db: &super::DB, paste: PasteData) -> HashMap<&'a str, String> {
         // TODO add ttl option to Form and use it here
         use plib::schema::pastes;
         use diesel::LoadDsl;
@@ -193,23 +197,25 @@ mod routes {
                     .get_result::<Paste>(db.conn())
                     .expect("Error saving new paste");
             }
-            Err(res) => {map.insert("error", res.to_string());}
+            Err(res) => {
+                map.insert("error", res.to_string());
+            }
         };
         map
     }
 
     #[post("/", format="text/plain", data = "<paste>")]
     pub fn upload(db: super::DB, paste: PasteData) -> Result<Template, Redirect> {
-        let map = save_paste(db, paste);
+        let map = save_paste(&db, paste);
         if map.contains_key("error") {
             return Ok(Template::render("index", &map));
         }
         Ok(Template::render("success", &map))
     }
 
-    #[post("/", format="text/plain", data = "<paste>")]
-    pub fn upload_json(db: super::DB, paste: PasteData) -> JSON<Value> {
-        JSON(json!(save_paste(db, paste)))
+    #[post("/", format="application/json", data = "<paste>")]
+    pub fn upload_json(db: super::DB, paste: JSON<PasteData>) -> JSON<Value> {
+        JSON(json!(save_paste(&db, paste.0)))
     }
 
     // #[put("/<id>", format="text/plain", data = "<paste>")]
@@ -234,7 +240,7 @@ mod routes {
         Ok(status::Custom(Status::Created, output))
     }
 
-    #[get("/<id>")]
+    #[get("/<id>", rank=3)]
     pub fn retrieve(id: PasteID) -> Result<Template, Flash<Redirect>> {
         let filename = format!("upload/{id}", id = id);
         if let Ok(data) = get_data(filename) {
@@ -245,13 +251,17 @@ mod routes {
         Err(Flash::error(Redirect::to("/"), ERR_FILE_404))
     }
 
-    #[get("/<id>")]
+    #[get("/<id>", format="application/json", rank=2)]
     pub fn retrieve_json(id: PasteID) -> JSON<Value> {
         let filename = format!("upload/{id}", id = id);
         if let Ok(data) = get_data(filename) {
-            return JSON(json!({"paste": data}));
+            return JSON(json!({
+                "paste": data
+            }));
         } else {
-            return JSON(json!({"error": MSG_FILE_404}));
+            return JSON(json!({
+                "error": MSG_FILE_404
+            }));
         }
     }
 
@@ -343,7 +353,9 @@ mod tests {
                 .mount("/", routes![routes::get_static,
                                     routes::index,
                                     routes::upload,
+                                    routes::upload_json,
                                     routes::retrieve,
+                                    routes::retrieve_json,
                                     routes::remove]);
         }
 
