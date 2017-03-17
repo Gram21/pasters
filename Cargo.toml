@@ -33,7 +33,6 @@ serde_derive = "0.9"
 
 
 [dev-dependencies]
-stainless = "*"
 rocket = { version = "0.2", features = ["testing"] }
 
 [dependencies.rocket_contrib]

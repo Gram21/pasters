@@ -1,6 +1,5 @@
 #![feature(plugin, custom_derive)]
 #![plugin(rocket_codegen)]
-#![cfg_attr(test, plugin(stainless))]
 #![cfg_attr(feature = "dev", allow(unstable_features))]
 #![cfg_attr(feature = "dev", plugin(clippy))]
 
@@ -324,7 +323,7 @@ mod routes {
 }
 
 #[cfg(test)]
-#[allow(unused_variables, unused_mut)]
+#[allow(unused_variables, unused_mut, dead_code)]
 mod tests {
     use rocket;
     use rocket::http::{Status, Method, ContentType};
@@ -346,9 +345,8 @@ mod tests {
         (res.status(), body_str)
     }
 
-    describe! route_tests{
-        before_each {
-            let rocket = rocket::ignite()
+    fn mount_rocket() -> rocket::Rocket {
+        rocket::ignite()
                 .catch(errors![routes::not_found, routes::too_large])
                 .mount("/", routes![routes::get_static,
                                     routes::index,
@@ -356,41 +354,36 @@ mod tests {
                                     routes::upload_json,
                                     routes::retrieve,
                                     routes::retrieve_json,
-                                    routes::remove]);
-        }
-
-        describe! status {
-            before_each {
-                let mut req = MockRequest::new(Method::Get, "/");
-                let mut res = req.dispatch_with(&rocket);
-                let body_str = res.body()
-                            .and_then(|b| b.into_string())
-                            .expect("Result has no body!");
-            }
-
-            it "responds with status OK 200" {
-                assert_eq!(res.status(), Status::Ok);
-            }
-
-            it "responds with no error" {
-                assert!(!body_str.contains("Error"));
-            }
-        }
-
-        describe! error404 {
-            it "invalid url" {
-                let mut req = MockRequest::new(Method::Get, "/invalid_url");
-                let res = req.dispatch_with(&rocket);
-                assert_eq!(res.status(), Status::NotFound);
-            }
-        }
-
-        describe! post_paste {
-            it "basic paste" {
-                let (status, body_str) = post_data_req(42, &rocket);
-                assert_eq!(status, Status::Ok);
-                assert!(body_str.contains("ID:"));
-            }
-        }
+                                    routes::remove])
     }
+
+    #[cfg(test)]
+    fn test_index() {
+        let rocket = mount_rocket();
+        let mut req = MockRequest::new(Method::Get, "/");
+        let mut res = req.dispatch_with(&rocket);
+        let body_str = res.body()
+                          .and_then(|b| b.into_string())
+                          .expect("Result has no body!");
+        
+        assert_eq!(res.status(), Status::Ok);
+        assert!(!body_str.contains("Error"));
+    }
+
+    #[cfg(test)]
+    fn test_404() {
+        let rocket = mount_rocket();
+        let mut req = MockRequest::new(Method::Get, "/invalid_url");
+        let res = req.dispatch_with(&rocket);
+        assert_eq!(res.status(), Status::NotFound);
+    }
+
+    #[cfg(test)]
+    fn test_post() {
+        let rocket = mount_rocket();
+        let (status, body_str) = post_data_req(42, &rocket);
+        assert_eq!(status, Status::Ok);
+        assert!(body_str.contains("ID:"));
+    }
+
 }
