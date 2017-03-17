@@ -347,14 +347,15 @@ mod tests {
 
     fn mount_rocket() -> rocket::Rocket {
         rocket::ignite()
-                .catch(errors![routes::not_found, routes::too_large])
-                .mount("/", routes![routes::get_static,
-                                    routes::index,
-                                    routes::upload,
-                                    routes::upload_json,
-                                    routes::retrieve,
-                                    routes::retrieve_json,
-                                    routes::remove])
+            .catch(errors![routes::not_found, routes::too_large])
+            .mount("/",
+                   routes![routes::get_static,
+                           routes::index,
+                           routes::upload,
+                           routes::upload_json,
+                           routes::retrieve,
+                           routes::retrieve_json,
+                           routes::remove])
     }
 
     #[cfg(test)]
@@ -363,9 +364,9 @@ mod tests {
         let mut req = MockRequest::new(Method::Get, "/");
         let mut res = req.dispatch_with(&rocket);
         let body_str = res.body()
-                          .and_then(|b| b.into_string())
-                          .expect("Result has no body!");
-        
+            .and_then(|b| b.into_string())
+            .expect("Result has no body!");
+
         assert_eq!(res.status(), Status::Ok);
         assert!(!body_str.contains("Error"));
     }
