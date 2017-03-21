@@ -81,7 +81,6 @@ impl<'a, 'r> FromRequest<'a, 'r> for DB {
     }
 }
 
-//TODO
 fn remove_old_pastes() -> Result<usize> {
     use plib::schema::pastes::dsl::*;
 
@@ -170,7 +169,7 @@ mod routes {
 
         let p_id = PasteID::new();
         let mut map = HashMap::new();
-        let content = paste.get_content_cloned(); //TODO
+        let content = paste.get_content_cloned();
         let paste_id = format!("{}", p_id);
         let paste_key = generate_deletion_key();
         let current_time = time::get_time();
@@ -314,6 +313,7 @@ mod routes {
     }
 }
 
+//TODO: more tests
 #[cfg(test)]
 #[allow(unused_variables, unused_mut, dead_code)]
 mod tests {
@@ -348,7 +348,7 @@ mod tests {
                            routes::remove])
     }
 
-    #[cfg(test)]
+    #[test]
     fn test_index() {
         let rocket = mount_rocket();
         let mut req = MockRequest::new(Method::Get, "/");
@@ -359,7 +359,15 @@ mod tests {
         assert!(!body_str.contains("Error"));
     }
 
-    #[cfg(test)]
+    #[test]
+    fn test_get_invalid() {
+        let rocket = mount_rocket();
+        let mut req = MockRequest::new(Method::Get, "/pSz062HQr66TgmluU2hXK7He"); //"random" pasteid
+        let mut res = req.dispatch_with(&rocket);
+        assert_eq!(res.status(), Status::SeeOther);
+    }
+
+    #[test]
     fn test_404() {
         let rocket = mount_rocket();
         let mut req = MockRequest::new(Method::Get, "/invalid_url");
@@ -367,7 +375,7 @@ mod tests {
         assert_eq!(res.status(), Status::NotFound);
     }
 
-    #[cfg(test)]
+    #[test]
     fn test_post() {
         let rocket = mount_rocket();
         let (status, body_str) = post_data_req(42, &rocket);

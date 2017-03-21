@@ -2,10 +2,7 @@ use rocket::Outcome;
 use rocket::Request;
 use rocket::data::{self, FromData, Data};
 use rocket::http::{Status, ContentType};
-use std::fs::File;
-use std::io;
-use std::io::{Write, Read};
-use std::path::Path;
+use std::io::{Read};
 
 #[derive(Serialize, Deserialize)]
 pub struct PasteData {
@@ -13,11 +10,6 @@ pub struct PasteData {
 }
 
 impl PasteData {
-    pub fn stream_to_file<P: AsRef<Path>>(self, path: P) -> Result<(), io::Error> {
-        let mut f = File::create(path).expect("Unable to create file");
-        f.write_all(self.content.as_bytes())
-    }
-
     pub fn get_content_cloned(&self) -> String {
         self.content.clone()
     }
