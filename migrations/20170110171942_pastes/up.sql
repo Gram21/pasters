@@ -1,5 +1,7 @@
 CREATE TABLE pastes (
   id VARCHAR PRIMARY KEY,
   key VARCHAR NOT NULL,
-  ttl INT NOT NULL
+  ttl INT NOT NULL,
+  created BIGINT NOT NULL,
+  paste TEXT NOT NULL
 );

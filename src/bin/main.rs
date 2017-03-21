@@ -15,6 +15,7 @@ extern crate diesel;
 extern crate r2d2;
 extern crate r2d2_diesel;
 extern crate plib;
+extern crate time;
 
 pub mod paste_id;
 pub mod paste_data;
@@ -82,6 +83,7 @@ impl<'a, 'r> FromRequest<'a, 'r> for DB {
     }
 }
 
+//TODO
 fn remove_old_files() -> Result<usize> {
     use plib::schema::pastes::dsl::*;
 
@@ -93,23 +95,26 @@ fn remove_old_files() -> Result<usize> {
     }
 
     let conn = &(*pool_conn.expect("Could not unwrap pooled connection!"));
-    for paste in pastes.load::<Paste>(conn).expect("Error loading pastes") {
-        let file_string = "upload/".to_string() + &paste.get_id_cloned();
+    for p in pastes.load::<Paste>(conn).expect("Error loading pastes") {
+        let file_string = "upload/".to_string() + &p.get_id_cloned();
         let path = Path::new(&file_string);
         if !path.exists() {
             // file does not exist. Remove from db and then continue the loop
             println!("Removed zombie paste");
-            del_paste_from_db(paste.get_id_cloned());
+            del_paste_from_db(p.get_id_cloned());
             continue;
         }
         let metadata = try!(path.metadata());
         let time = try!(metadata.modified());
         let time_alive = time.elapsed().expect("Could not get elapsed time!");
-        if time_alive > Duration::from_secs(paste.get_ttl_u64()) && remove_file(path).is_ok() {
+        if time_alive > Duration::from_secs(p.get_ttl_u64()) && remove_file(path).is_ok() {
             // also remove from db
-            count += del_paste_from_db(paste.get_id_cloned());
+            count += del_paste_from_db(p.get_id_cloned());
             println!("Removed file of paste {}",
-                     path.file_name().unwrap().to_str().unwrap());
+                     path.file_name()
+                         .unwrap()
+                         .to_str()
+                         .unwrap());
 
         }
     }
@@ -121,33 +126,32 @@ fn del_paste_from_db(p_id: String) -> usize {
 
     if let Ok(pool_conn) = DB_POOL.get() {
         let conn = &(*pool_conn);
-        diesel::delete(pastes.filter(id.like(p_id)))
-            .execute(conn)
-            .expect("Error deleting paste")
+        diesel::delete(pastes.filter(id.like(p_id))).execute(conn).expect("Error deleting paste")
     } else {
         0
     }
 }
 
 mod routes {
+    use DB;
     use diesel;
     use paste_data::PasteData;
     use paste_id::{self, PasteID};
     use plib::models::Paste;
     use rand::{self, Rng};
     use rocket;
-    use rocket::http::Status;
     use rocket::request::{Form, FlashMessage};
-    use rocket::response::{status, NamedFile, Redirect, Flash};
+    use rocket::response::{NamedFile, Redirect, Flash};
     use rocket_contrib::{JSON, Value, Template};
     use std;
     use std::collections::HashMap;
-    use std::fs::{File, remove_file};
-    use std::io::Read;
+    use std::fs::remove_file;
     use std::path::{Path, PathBuf};
+    use time;
 
     static ERR_FILE_404: &'static str = "ERR_FILE_404";
     static MSG_FILE_404: &'static str = "Could not find file";
+    static MSG_DB_ERR: &'static str = "Cannot access database";
 
     #[error(404)]
     pub fn not_found(req: &rocket::Request) -> Template {
@@ -182,19 +186,25 @@ mod routes {
 
         let p_id = PasteID::new();
         let mut map = HashMap::new();
-        match write_to_file(paste, &p_id) {
+        let content = paste.get_content_cloned(); //TODO
+        let paste_id = format!("{}", p_id);
+        let paste_key = generate_deletion_key();
+        let current_time = time::get_time();
+        let paste_creation = current_time.sec;
+        //TODO
+        let new_paste = Paste::new(paste_id,
+                                   paste_key,
+                                   60 * 60 * 24 * 7,
+                                   paste_creation,
+                                   content);
+        let save_result =
+            diesel::insert(&new_paste).into(pastes::table).get_result::<Paste>(db.conn());
+        match save_result {
             Ok(res) => {
-                let paste_id = format!("{}", p_id);
-                let paste_key = generate_deletion_key();
-                let new_paste = Paste::new(paste_id, paste_key, 60 * 60 * 24 * 7); //TODO
                 map.insert("id", new_paste.get_id_cloned());
                 map.insert("key", new_paste.get_key_cloned());
                 map.insert("ttl", new_paste.get_ttl_u64().to_string());
-                map.insert("link", res.1.to_string());
-                diesel::insert(&new_paste)
-                    .into(pastes::table)
-                    .get_result::<Paste>(db.conn())
-                    .expect("Error saving new paste");
+                map.insert("link", res.get_id_cloned().to_string());
             }
             Err(res) => {
                 map.insert("error", res.to_string());
@@ -217,11 +227,6 @@ mod routes {
         JSON(json!(save_paste(&db, paste.0)))
     }
 
-    // #[put("/<id>", format="text/plain", data = "<paste>")]
-    // pub fn update(id: PasteID, paste: PasteData) -> std::io::Result<status::Custom<String>> {
-    //     write_to_file(paste, id)
-    // }
-
     fn generate_deletion_key() -> String {
         let mut key = String::with_capacity(16);
         let mut rng = rand::thread_rng();
@@ -231,18 +236,13 @@ mod routes {
         key
     }
 
-    fn write_to_file(paste: PasteData, id: &PasteID) -> std::io::Result<status::Custom<String>> {
-        let filename = format!("upload/{id}", id = id);
-        let output = format!("/{id}", id = id);
-
-        paste.stream_to_file(Path::new(&filename))?;
-        Ok(status::Custom(Status::Created, output))
-    }
-
     #[get("/<id>", rank=3)]
     pub fn retrieve(id: PasteID) -> Result<Template, Flash<Redirect>> {
-        let filename = format!("upload/{id}", id = id);
-        if let Ok(data) = get_data(filename) {
+        let db = match super::DB_POOL.get() {
+            Ok(conn) => DB(conn),
+            Err(_) => return Err(Flash::error(Redirect::to("/"), MSG_DB_ERR)),
+        };
+        if let Ok(data) = get_data(&db, id.id()) {
             let mut map = HashMap::new();
             map.insert("paste", data);
             return Ok(Template::render("paste", &map));
@@ -252,25 +252,35 @@ mod routes {
 
     #[get("/<id>", format="application/json", rank=2)]
     pub fn retrieve_json(id: PasteID) -> JSON<Value> {
-        let filename = format!("upload/{id}", id = id);
-        if let Ok(data) = get_data(filename) {
+        let db = match super::DB_POOL.get() {
+            Ok(conn) => DB(conn),
+            Err(_) => {
+                return JSON(json!({
+                                      "error": MSG_DB_ERR
+                                  }));
+            }
+        };
+        if let Ok(data) = get_data(&db, id.id()) {
             return JSON(json!({
-                "paste": data
-            }));
+                                  "paste": data
+                              }));
         } else {
             return JSON(json!({
-                "error": MSG_FILE_404
-            }));
+                                  "error": MSG_FILE_404
+                              }));
         }
     }
 
-    fn get_data(filename: String) -> Result<String, String> {
-        let mut data = String::new();
-        if let Ok(mut f) = File::open(filename) {
-            f.read_to_string(&mut data).expect("Unable to read string");
-            return Ok(data);
+    fn get_data(db: &super::DB, paste_id: String) -> Result<String, String> {
+        use plib::schema::pastes::dsl::*;
+        use diesel::*;
+
+        let db_res = pastes.filter(id.like(paste_id)).limit(1).load::<Paste>(db.conn());
+
+        match db_res {
+            Ok(res) => Ok(res[0].get_paste_cloned()),
+            Err(_) => Err(ERR_FILE_404.into()),
         }
-        Err(ERR_FILE_404.into())
     }
 
     #[derive(FromForm)]
@@ -306,9 +316,7 @@ mod routes {
 
         if let Ok(pool_conn) = super::DB_POOL.get() {
             let conn = &(*pool_conn);
-            let k = pastes.find(paste_id)
-                .first::<Paste>(conn)
-                .expect("Error loading paste");
+            let k = pastes.find(paste_id).first::<Paste>(conn).expect("Error loading paste");
             k.get_key_cloned()
         } else {
             // db connection could not be established, return random key
@@ -339,9 +347,7 @@ mod tests {
             .header(ContentType::new("text", "plain"))
             .body(&format!("paste={paste}", paste = paste_content));
         let mut res = req.dispatch_with(rocket);
-        let body_str = res.body()
-            .and_then(|b| b.into_string())
-            .expect("Result has no body!");
+        let body_str = res.body().and_then(|b| b.into_string()).expect("Result has no body!");
         (res.status(), body_str)
     }
 
@@ -363,9 +369,7 @@ mod tests {
         let rocket = mount_rocket();
         let mut req = MockRequest::new(Method::Get, "/");
         let mut res = req.dispatch_with(&rocket);
-        let body_str = res.body()
-            .and_then(|b| b.into_string())
-            .expect("Result has no body!");
+        let body_str = res.body().and_then(|b| b.into_string()).expect("Result has no body!");
 
         assert_eq!(res.status(), Status::Ok);
         assert!(!body_str.contains("Error"));

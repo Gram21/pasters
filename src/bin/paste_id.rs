@@ -25,6 +25,10 @@ impl<'a> PasteID<'a> {
     pub fn new() -> PasteID<'static> {
         PasteID::new_with_size(SIZE)
     }
+
+    pub fn id(self) -> String {
+        self.0.into_owned()
+    }
 }
 
 impl<'a> fmt::Display for PasteID<'a> {

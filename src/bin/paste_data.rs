@@ -17,6 +17,10 @@ impl PasteData {
         let mut f = File::create(path).expect("Unable to create file");
         f.write_all(self.content.as_bytes())
     }
+
+    pub fn get_content_cloned(&self) -> String {
+        self.content.clone()
+    }
 }
 
 impl FromData for PasteData {
