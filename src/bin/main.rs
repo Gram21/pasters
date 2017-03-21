@@ -30,21 +30,19 @@ use rocket::Outcome::{Success, Failure};
 use rocket::Request;
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
-use std::fs::remove_file;
 use std::io::*;
 use std::io::Error;
-use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
 fn main() {
     thread::spawn(|| {
         loop {
-            let interval = 60;
-            if let Err(err) = remove_old_files() {
+            let interval = 420; //TODO time interval?
+            if let Err(err) = remove_old_pastes() {
                 println!("Error: {}", err);
             }
-            thread::sleep(Duration::from_secs(interval)) //TODO maybe make this better
+            thread::sleep(Duration::from_secs(interval))
         }
     });
     rocket::ignite()
@@ -84,7 +82,7 @@ impl<'a, 'r> FromRequest<'a, 'r> for DB {
 }
 
 //TODO
-fn remove_old_files() -> Result<usize> {
+fn remove_old_pastes() -> Result<usize> {
     use plib::schema::pastes::dsl::*;
 
     let mut count: usize = 0;
@@ -94,29 +92,16 @@ fn remove_old_files() -> Result<usize> {
         return Err(Error::new(ErrorKind::Other, err.to_string()));
     }
 
+    let curr_time = time::get_time().sec;
     let conn = &(*pool_conn.expect("Could not unwrap pooled connection!"));
     for p in pastes.load::<Paste>(conn).expect("Error loading pastes") {
-        let file_string = "upload/".to_string() + &p.get_id_cloned();
-        let path = Path::new(&file_string);
-        if !path.exists() {
-            // file does not exist. Remove from db and then continue the loop
-            println!("Removed zombie paste");
-            del_paste_from_db(p.get_id_cloned());
-            continue;
-        }
-        let metadata = try!(path.metadata());
-        let time = try!(metadata.modified());
-        let time_alive = time.elapsed().expect("Could not get elapsed time!");
-        if time_alive > Duration::from_secs(p.get_ttl_u64()) && remove_file(path).is_ok() {
-            // also remove from db
+        let creation_time = p.get_created();
+        let max_time = creation_time + p.get_ttl_i64();
+        if curr_time > max_time {
+            //remove from db
             count += del_paste_from_db(p.get_id_cloned());
-            println!("Removed file of paste {}",
-                     path.file_name()
-                         .unwrap()
-                         .to_str()
-                         .unwrap());
-
-        }
+            println!("Paste with id {} expired. Removed it.", p.get_id_cloned());
+        }      
     }
     Ok(count)
 }
@@ -145,7 +130,6 @@ mod routes {
     use rocket_contrib::{JSON, Value, Template};
     use std;
     use std::collections::HashMap;
-    use std::fs::remove_file;
     use std::path::{Path, PathBuf};
     use time;
 
@@ -191,10 +175,10 @@ mod routes {
         let paste_key = generate_deletion_key();
         let current_time = time::get_time();
         let paste_creation = current_time.sec;
-        //TODO
+        let paste_ttl = 60 * 60 * 24 * 7;
         let new_paste = Paste::new(paste_id,
                                    paste_key,
-                                   60 * 60 * 24 * 7,
+                                   paste_ttl,
                                    paste_creation,
                                    content);
         let save_result =
@@ -203,7 +187,7 @@ mod routes {
             Ok(res) => {
                 map.insert("id", new_paste.get_id_cloned());
                 map.insert("key", new_paste.get_key_cloned());
-                map.insert("ttl", new_paste.get_ttl_u64().to_string());
+                map.insert("ttl", new_paste.get_ttl_i64().to_string());
                 map.insert("link", res.get_id_cloned().to_string());
             }
             Err(res) => {
@@ -261,13 +245,13 @@ mod routes {
             }
         };
         if let Ok(data) = get_data(&db, id.id()) {
-            return JSON(json!({
-                                  "paste": data
-                              }));
+            JSON(json!({
+                           "paste": data
+                       }))
         } else {
-            return JSON(json!({
-                                  "error": MSG_FILE_404
-                              }));
+            JSON(json!({
+                           "error": MSG_FILE_404
+                       }))
         }
     }
 
@@ -278,7 +262,12 @@ mod routes {
         let db_res = pastes.filter(id.like(paste_id)).limit(1).load::<Paste>(db.conn());
 
         match db_res {
-            Ok(res) => Ok(res[0].get_paste_cloned()),
+            Ok(res) => {
+                if res.len() < 1 {
+                    Err(ERR_FILE_404.into())
+                } else {
+                    Ok(res[0].get_paste_cloned())
+                }},
             Err(_) => Err(ERR_FILE_404.into()),
         }
     }
@@ -292,15 +281,10 @@ mod routes {
     #[post("/remove", data = "<del_form>")]
     pub fn remove<'a>(del_form: Form<'a, PasteDel<'a>>) -> Template {
         let paste_del = del_form.get();
-        let filename = format!("upload/{id}", id = paste_del.paste_id);
-        let file = Path::new(&filename);
         let mut map = HashMap::new();
-        if file.exists() {
-            let key = paste_del.paste_key;
-            if key == get_paste_key(paste_del.paste_id.into()) && remove_file(file).is_ok() {
-                map.insert("success",
-                           format!("Paste {id} removed", id = paste_del.paste_id));
-                super::del_paste_from_db(paste_del.paste_id.into());
+        if paste_del.paste_key == get_paste_key(paste_del.paste_id.into()) {
+            if super::del_paste_from_db(paste_del.paste_id.into()) > 0 {  
+                map.insert("success", format!("Paste {id} removed", id = paste_del.paste_id));
             } else {
                 map.insert("error", "Invalid Paste ID or Key".into());
             }

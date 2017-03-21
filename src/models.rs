@@ -28,8 +28,8 @@ impl Paste {
         self.key.clone()
     }
 
-    pub fn get_ttl_u64(&self) -> u64 {
-        self.ttl as u64
+    pub fn get_ttl_i64(&self) -> i64 {
+        self.ttl as i64
     }
 
     pub fn get_created(&self) -> i64 {
