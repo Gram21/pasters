@@ -43,7 +43,7 @@ impl FromData for PasteData {
         // remove the "paste=" from the raw data //TODO Problem: paste= must be at end of request
         let real_data = match data_string.find("paste=") {
             Some(i) => &data_string[(i + 6)..],
-            None => return Outcome::Failure((Status::BadRequest, "Missing 'paste='.".into())),
+            None => return Outcome::Failure((Status::BadRequest, "Missing paste parameter.".into())),
         };
         Outcome::Success(PasteData { content: real_data.to_string() })
     }

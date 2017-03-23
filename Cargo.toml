@@ -17,13 +17,13 @@ name = "plib"
 path = "src/lib.rs"
 
 [dependencies]
-clippy = {version = "0.0.107", optional = true}
-diesel = { version = "0.9.*", features = ["postgres"] }
-diesel_codegen = { version = "0.9.*", features = ["postgres"] }
+clippy = {version = "0.0.*", optional = true}
+diesel = { version = "0.9", features = ["postgres"] }
+diesel_codegen = { version = "0.9", features = ["postgres"] }
 dotenv = "0.8"
 lazy_static = "0.2"
 r2d2 = "0.7"
-r2d2-diesel = "0.9"
+r2d2-diesel = "0.12"
 rand = "0.3"
 rocket = "0.2"
 rocket_codegen = "0.2"
